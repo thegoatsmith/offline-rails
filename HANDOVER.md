@@ -217,9 +217,12 @@ come up the stairs.
 
 Verified:
 
-- `node tests/network.test.mjs` — 29 assertions covering station merging, line
-  attribution, change counting, leg collapsing, walking interchanges, the
-  platform-only tagging fallback, and way chaining. All passing.
+- `bun test` — 40 tests covering station merging and line attribution,
+  out-of-station walking interchanges, way chaining into continuous polylines,
+  geometry simplification and packing, record migration without a network,
+  clipping to the requested box, ways arriving separately from their relation,
+  place identity by OSM id, and believing an empty answer only when every
+  mirror agrees. All passing.
 - Every element `app.js` queries exists in `index.html` (checked by script).
 - All modules pass `node --check`.
 - **Run against real Overpass data.** Lisbon, Prague and Mexico City through a
@@ -319,7 +322,7 @@ from 7.8 ms to 94.7 ms. Measure the handler, and check `labelsShown` first.
 ```bash
 bun install
 bun run dev      # build + serve on :8080, watching
-bun test         # 30 assertions, no browser
+bun test         # 40 tests, no browser
 bun run check    # tsc --noEmit + svelte-check
 bun run lint     # oxlint
 bun run fmt      # oxfmt

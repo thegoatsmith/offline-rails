@@ -104,7 +104,7 @@ from OSM. The app's chrome stays grey so it doesn't fight the network.
 ```bash
 bun install            # also points git at the versioned hooks
 bun run dev            # build + serve on :8080, watching
-bun test               # 35 assertions, no browser, no network
+bun test               # 40 tests, no browser, no network
 bun run check          # TypeScript 7, then svelte-check
 bun run lint           # oxlint --deny-warnings
 bun run fmt            # oxfmt

@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 bun install
 bun run dev            # build + serve on :8080, watching src/
 bun run build          # -> dist/
-bun test               # 35 assertions, no browser, no network
+bun test               # 40 tests, no browser, no network
 bun test -t "a real corner survives"   # single test by name
 bun test tests/network.test.ts         # single file
 bun run check          # TypeScript 7 on .ts, then svelte-check on .svelte
