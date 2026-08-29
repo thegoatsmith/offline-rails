@@ -101,6 +101,21 @@ never trails the zoom by a frame. `CSS_SIZED` feature-detects it and the old
 attribute path still runs where it is unsupported — check both if you touch
 either.
 
+**The query asks only for what fits in the box.** `.r out body geom` returns
+every member way of every matching relation in full, so Moscow with suburban
+rail was a 223 MB download of which 89% was thrown away on arrival. The query
+now fetches relations without geometry, then the member ways and nodes bounded
+to the same box, and `buildCity` joins the ways back by ref. Measured live:
+223.0 MB -> 39.9 MB, 41.1 s -> 7.6 s to fetch, and `buildCity` 6.85 s -> 0.37 s,
+for an identical 975-station map. The build got 18x faster for the same reason
+the download shrank — most of what chaining and simplification used to process
+was destined to be clipped away.
+
+Small cities pay about 11% more, since each way now arrives as its own element
+rather than inline. Lisbon builds an identical map either way. `buildCity`
+accepts both response shapes, so the old fixtures still work and the query could
+be reverted without touching the parser.
+
 **The network is clipped to the bounding box that was asked for.** Overpass
 selects a relation if *any* member falls in the box and `out geom` then returns
 that relation whole. Ask for Moscow with suburban rail and you get Russian
@@ -203,10 +218,11 @@ from 7.8 ms to 94.7 ms. Measure the handler, and check `labelsShown` first.
 - The first zoom after opening a large city costs ~35–45 ms for two or three
   frames — the first cull, plus GC from the build. It settles immediately and
   is well below the threshold of the rest of the work, but it is real.
-- Building Moscow blocks for ~4 s in Node and ~10 s in the browser. Tokyo is
-  0.3 s and Paris 1.2 s, so this is Moscow's 222 MB response rather than the
-  algorithm. The step has UI feedback, but it is a synchronous freeze inside
-  `buildCity`.
+- The worker is now belt and braces rather than load-bearing. Bounding the
+  query cut Moscow's blocking work from ~12.7 s to roughly a second, so the
+  freeze it was built to hide has largely gone. It still keeps that second off
+  the UI thread and still carries migrations, so it earns its place — but do not
+  assume the old numbers when judging changes to it.
 - Paint cost has never been measured, only the app's own per-event work. The
   pane used for testing runs as a background tab, which never composites, so
   real frame intervals could not be sampled. Worth checking on a real device.
@@ -268,28 +284,18 @@ path needs real-world testing.
 
 ## Next up, in order
 
-1. **Stop downloading 223 MB to keep 8 MB of it.** Clipping currently discards
-   89% of Moscow's geometry *after* it crosses the network, because
-   `.r out body geom` emits every member way of every matching relation in full,
-   Trans-Siberian track included. Restricting the emitted ways and nodes to the
-   box instead —
-
-   ```
-   rel[...](bbox)->.r;
-   .r out body;
-   way(r.r)(bbox); out geom;
-   node(r.r)(bbox); out body;
-   ```
-
-   — should cut it by roughly an order of magnitude, shrinking the download
-   wait, the build, and the load on a volunteer server at once. The catch is
-   that members stop carrying inline geometry, so `buildCity` has to join ways
-   by ref. That is the part every test leans on, so do it on its own and
-   re-verify all seven cities.
-2. **Label collision is improved, not solved.** Greedy grid placement keeps the
+1. **Label collision is improved, not solved.** Greedy grid placement keeps the
    count sane, but nothing yet stops a label sitting on top of a line, and the
    winner within a cell is whichever interchange comes first rather than the
-   most important station.
+   most important station — there is no notion of importance beyond "is an
+   interchange".
+2. **`manifest.webmanifest` and the icons.** They are listed in `SHELL` and
+   referenced from `index.html` but do not exist, so every install logs them as
+   misses and the app cannot be installed to a home screen — which is the whole
+   delivery mechanism for an offline-first tool.
+3. **Update rather than re-download.** Re-run the query for a saved city and
+   diff, so a refresh does not cost a full download. Much more attractive now
+   that a refresh is 40 MB rather than 223 MB.
 3. **Update rather than re-download.** Re-run the query for a saved city and
    diff, so a refresh doesn't cost a full download.
 4. **Export/import a city pack** as JSON, so a travel companion can load a
