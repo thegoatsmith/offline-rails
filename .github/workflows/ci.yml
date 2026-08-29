@@ -76,17 +76,24 @@ jobs:
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
+      # fmt:check is the one gate a docs-only push can fail, so it is the one
+      # that runs unconditionally. Order otherwise matches CLAUDE.md.
       - name: lint
+        if: steps.scope.outputs.scope == 'full'
         run: bun run lint
       - name: format
         run: bun run fmt:check
       - name: types
+        if: steps.scope.outputs.scope == 'full'
         run: bun run check
       - name: test
+        if: steps.scope.outputs.scope == 'full'
         run: bun test
       - name: build
+        if: steps.scope.outputs.scope == 'full'
         run: bun run build
       - uses: actions/upload-artifact@v7
+        if: steps.scope.outputs.scope == 'full'
         with:
           name: dist
           path: dist/
