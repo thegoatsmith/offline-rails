@@ -347,9 +347,11 @@ function clipShapes(shapes, within) {
 export function buildCity(raw, meta) {
   const within = boxTest(meta.bbox);
   const nodes = new Map();
+  const ways = new Map();
   const rels = [];
   for (const el of raw.elements) {
     if (el.type === 'node') nodes.set(el.id, el);
+    else if (el.type === 'way') ways.set(el.id, el);
     else if (el.type === 'relation') rels.push(el);
   }
 
@@ -399,8 +401,12 @@ export function buildCity(raw, meta) {
       if (m.type === 'node' && /^stop/.test(m.role || '')) {
         const st = stationFor(m);
         if (st && st !== stops[stops.length - 1]) stops.push(st);
-      } else if (m.type === 'way' && !m.role && m.geometry) {
-        shapes.push(m.geometry.map((p) => [p.lat, p.lon]));
+      } else if (m.type === 'way' && !m.role) {
+        // A member carries its own geometry when the query asked for the
+        // relation with `out geom`, and none when the ways were fetched
+        // separately so they could be bounded to the city. Accept both.
+        const geometry = m.geometry || ways.get(m.ref)?.geometry;
+        if (geometry) shapes.push(geometry.map((p) => [p.lat, p.lon]));
       }
     }
 

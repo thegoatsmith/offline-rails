@@ -233,5 +233,49 @@ const relation = (nodes) => (id, ref, colour, ids) => ({
     ).stats.stations, 3);
 }
 
+/* --- 8. way geometry can arrive separately from the relation --- */
+{
+  // Asking Overpass for a relation with `out geom` returns every member way in
+  // full, however far it runs beyond the city. Fetching the ways separately and
+  // bounding them to the box is far smaller, but then members carry only a ref.
+  // Both shapes of response have to build the same map.
+  const P = (lat, lon) => ({ lat, lon });
+  const line = [P(0, 0), P(0.001, 0.001), P(0, 0.002)];
+
+  const inline = buildCity(
+    {
+      elements: [
+        { type: 'relation', id: 1, tags: { type: 'route', route: 'subway', ref: 'M', name: 'M' },
+          members: [{ type: 'way', ref: 9, role: '', geometry: line }] },
+      ],
+    },
+    { id: 't8a', name: 'Inline', bbox: {}, modes: ['subway'] }
+  );
+
+  const separate = buildCity(
+    {
+      elements: [
+        { type: 'relation', id: 1, tags: { type: 'route', route: 'subway', ref: 'M', name: 'M' },
+          members: [{ type: 'way', ref: 9, role: '' }] },      // no geometry here
+        { type: 'way', id: 9, geometry: line },                 // it arrives on its own
+      ],
+    },
+    { id: 't8b', name: 'Separate', bbox: {}, modes: ['subway'] }
+  );
+
+  check('geometry resolved by ref matches inline geometry',
+    decodeShape(separate.lines[0].shapes[0]), decodeShape(inline.lines[0].shapes[0]));
+  check('a member with no geometry anywhere is skipped, not crashed on',
+    buildCity(
+      {
+        elements: [
+          { type: 'relation', id: 1, tags: { type: 'route', route: 'subway', ref: 'M', name: 'M' },
+            members: [{ type: 'way', ref: 404, role: '' }] },
+        ],
+      },
+      { id: 't8c', name: 'Missing', bbox: {}, modes: ['subway'] }
+    ).lines.length, 0);
+}
+
 console.log(failures ? `\n${failures} failing` : '\nall passing');
 process.exit(failures ? 1 : 0);
