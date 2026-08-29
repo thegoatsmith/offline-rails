@@ -7,18 +7,24 @@ the network again — no subscription, no per-city unlock, no ads, no tracking.
 
 ## Run it
 
-Service workers need a real origin, so open it over HTTP rather than `file://`:
-
 ```bash
-cd offline-rails
-python3 -m http.server 8000 --protocol HTTP/1.1
-# then http://localhost:8000
+bun install
+bun run dev
+# then http://localhost:8080
 ```
 
-Use a threaded or HTTP/1.1 server. Plain `python3 -m http.server` handles one
-request at a time, and the service worker's install step requests the whole
-shell at once — on a serial server most of those get dropped and the install
-fails. `npx serve` works too.
+Service workers need a real origin, so open it over HTTP rather than `file://`.
+The dev server sends `Cache-Control: no-store`, which matters more than it
+sounds: Chrome heuristically caches ES modules when a server sends only
+`Last-Modified`, and an edit then silently does nothing with no error to
+explain why.
+
+To serve a production build instead:
+
+```bash
+bun run build
+# then serve dist/ over HTTP with any static server
+```
 
 ## Put it on your phone
 
