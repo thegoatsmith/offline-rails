@@ -34,6 +34,17 @@ const EMPTY = 'sent nothing back';
 export const OVERPASS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
+  // Last on purpose. It is VK's instance, and this app exists to avoid sending
+  // anything to a company that would rather have the data, so it is reached
+  // only when both of the others have already failed. It earns the slot by
+  // being the only global instance left that needs no API key: of the seven the
+  // wiki lists, four require a key or payment, one is overpass-api.de itself,
+  // and private.coffee — which overpass.kumi.systems now resolves to, the same
+  // 193.219.97.30 — was timing out when this was written, as kumi itself was
+  // answering 502. Checked against fd5112c's three reference cities before
+  // being added: Lisbon 8, Prague 6 and Moscow 32 subway relations, matching
+  // overpass-api.de exactly, with CORS and a data timestamp a minute apart.
+  'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
 ];
 
 const DB_NAME = 'offline-rails';

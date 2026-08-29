@@ -311,6 +311,26 @@ from 7.8 ms to 94.7 ms. Measure the handler, and check `labelsShown` first.
   server from a city with no railways — `emptyNetworkMessage` says both might be
   true rather than blaming the map. Expect this when testing repeatedly: the
   rate limit is per IP and clears in a minute or two.
+- The mirror list was surveyed on 2026-08-29 and there is no third healthy
+  instance to be had. `kumi.systems` answers 502 and resolves to
+  `overpass.private.coffee` — the same 193.219.97.30 — which times out;
+  `overpass.osm.jp` presents an expired TLS certificate, which a browser cannot
+  be talked past; `overpass.nchc.org.tw` no longer resolves. Of the seven global
+  instances the wiki lists, four want an API key or payment. That left
+  `maps.mail.ru` as the only keyless global instance still answering, and it
+  agreed with `overpass-api.de` exactly on the three reference cities — Lisbon
+  8, Prague 6, Moscow 32 subway relations — with `Access-Control-Allow-Origin`
+  and a data timestamp a minute apart. It is last in the list so it is reached
+  only after both others have failed.
+- What `overpass-api.de` does to a request that it will not serve is not
+  settled. It has been seen answering 200, 406, 429, 504 and refusing the TCP
+  connection outright, sometimes within the same minute, and some of those
+  responses carry no CORS headers, so the browser reports a CORS error and the
+  real status never reaches the app. A deployed origin failing while localhost
+  succeeded looked like origin discrimination and was not reproducible: repeated
+  A/B runs flipped both ways within minutes. Do not conclude anything about that
+  service from a single pair of requests — interleave repeated trials, and
+  expect probing to make it worse, because it escalates per IP.
 - Service worker registration could not be confirmed in the test browser: even
   a two-line worker fails there with "an unknown error occurred when fetching
   the script", on two different servers, so it is the environment rather than

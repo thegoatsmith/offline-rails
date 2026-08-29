@@ -485,6 +485,26 @@ describe('an empty answer is only believed when every mirror agrees', () => {
     expect(seen.length).toBe(2);
   });
 
+  test('a third mirror is tried when the first two fail', async () => {
+    const seen: string[] = [];
+    const res = await withFetch(
+      (async (url: string) => {
+        seen.push(new URL(url).hostname);
+        return seen.length < 3 ? new Response('nope', { status: 500 }) : ok([{ id: 1 }]);
+      }) as unknown as typeof fetch,
+      () => fetchNetwork(bbox, ['subway']),
+    );
+    expect(res.elements.length).toBe(1);
+    expect(seen.length).toBe(3);
+  });
+
+  // overpass.osm.ch answered 200 with zero elements for queries the others
+  // served fully, and sitting last its answer was the one believed. It is not a
+  // mirror to reach for again the next time the list looks short.
+  test('the mirror that lied is not in the list', () => {
+    expect(OVERPASS.map((e) => new URL(e).hostname)).not.toContain('overpass.osm.ch');
+  });
+
   test('a working first mirror is not followed by a second request', async () => {
     let calls = 0;
     await withFetch(
