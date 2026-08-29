@@ -12,16 +12,18 @@
     "lint:fix": "oxlint --fix",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
-    "check": "tsc --noEmit && svelte-check --tsconfig ./tsconfig.json"
+    "check": "./node_modules/@typescript/native/bin/tsc --noEmit && svelte-check --tsgo --tsconfig ./tsconfig.json",
+    "typecheck": "./node_modules/@typescript/native/bin/tsc --noEmit"
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@typescript/native": "npm:typescript@7",
     "bun-plugin-svelte": "latest",
     "oxfmt": "latest",
     "oxlint": "latest",
     "svelte": "latest",
     "svelte-check": "latest",
-    "typescript": "latest",
+    "typescript": "~6",
     "wrangler": "latest"
   }
 }

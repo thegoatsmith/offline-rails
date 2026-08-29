@@ -9,3 +9,6 @@ dist/
 
 # macOS
 .DS_Store
+
+# svelte-check --tsgo intermediates
+.svelte-check/

@@ -6,5 +6,5 @@
   "trailingComma": "all",
   "sortImports": true,
   "sortPackageJson": true,
-  "ignorePatterns": ["dist", "node_modules", "bun.lock"]
+  "ignorePatterns": [".svelte-check", "bun.lock", "dist", "node_modules"]
 }
