@@ -56,6 +56,16 @@
     if (!open && dlg.open) dlg.close();
   });
 
+  // Nominatim can return the same label twice. Show how big each one is, but
+  // only for the rows that actually collide — otherwise it is noise.
+  const ambiguous = $derived(
+    new Set(
+      places
+        .map((p) => p.name)
+        .filter((n, i, all) => all.indexOf(n) !== i),
+    ),
+  );
+
   let timer: ReturnType<typeof setTimeout> | undefined;
   function onInput(value: string) {
     query = value;
@@ -172,12 +182,16 @@
     {:else if searchNote}
       <li><p class="note" style="padding:14px">{searchNote}</p></li>
     {:else}
-      {#each places as p (p.name)}
+      {#each places as p (p.id)}
         <li>
           <button class="row" onclick={() => download(p)}>
             <span class="row-main">
               <span>{p.short}</span>
-              <span class="row-sub">{p.name.split(',').slice(1, 3).join(',').trim()}</span>
+              <span class="row-sub">
+                {p.name.split(',').slice(1, 3).join(',').trim()}{ambiguous.has(p.name)
+                  ? ` · about ${p.spanKm} km across`
+                  : ''}
+              </span>
             </span>
           </button>
         </li>

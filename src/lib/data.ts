@@ -118,6 +118,29 @@ interface NominatimRow {
   lat: string;
   lon: string;
   boundingbox: [string, string, string, string];
+  osm_type?: string;
+  osm_id?: number;
+  place_id?: number;
+}
+
+/**
+ * Nominatim happily returns two rows with the same `display_name` — searching
+ * Moscow gives the city and the federal subject, both labelled "Москва,
+ * Центральный федеральный округ, Россия", as relations 102269 and 2555133.
+ * Keying a list on the name therefore crashes Svelte with `each_key_duplicate`.
+ * The OSM type and id are the real identity; place_id and finally the
+ * coordinates are fallbacks for rows that carry neither.
+ */
+export function placeId(row: {
+  osm_type?: string;
+  osm_id?: number;
+  place_id?: number;
+  lat: string;
+  lon: string;
+}): string {
+  if (row.osm_type && row.osm_id != null) return `${row.osm_type}/${row.osm_id}`;
+  if (row.place_id != null) return `place/${row.place_id}`;
+  return `at/${row.lat},${row.lon}`;
 }
 
 export async function geocode(query: string): Promise<Place[]> {
@@ -128,12 +151,24 @@ export async function geocode(query: string): Promise<Place[]> {
   if (!res.ok) throw new Error('Place search is unavailable right now.');
   const rows = (await res.json()) as NominatimRow[];
   return rows.map((r) => ({
+    id: placeId(r),
     name: r.display_name,
+    spanKm: rawSpanKm(r.boundingbox.map(Number) as [number, number, number, number], +r.lat),
     short: r.name || r.display_name.split(',')[0]!,
     lat: +r.lat,
     lon: +r.lon,
     bbox: clampBox(r.boundingbox.map(Number) as [number, number, number, number], +r.lat, +r.lon),
   }));
+}
+
+// The un-clamped width, used only to tell two identically-named results apart.
+function rawSpanKm(
+  [south, north, west, east]: [number, number, number, number],
+  lat: number,
+): number {
+  const wide = (east - west) * 111.32 * Math.cos(rad(lat));
+  const tall = (north - south) * 110.574;
+  return Math.round(Math.max(Math.abs(wide), Math.abs(tall)));
 }
 
 // Nominatim boxes swing from a single point to an entire prefecture.

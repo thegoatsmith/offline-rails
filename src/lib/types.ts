@@ -15,11 +15,23 @@ export interface BBox {
 export type MaybeBBox = Partial<BBox>;
 
 export interface Place {
+  /**
+   * Unique per result. Two Nominatim rows can share a `display_name` — a
+   * search for Moscow returns the city and the federal subject under the same
+   * label — so the name is not an identity and must never be used as one.
+   */
+  id: string;
   name: string;
   short: string;
   lat: number;
   lon: number;
   bbox: BBox;
+  /**
+   * How wide the place is before clamping, in km. Two results can carry the
+   * same label — Moscow the city and Moscow the federal subject — and this is
+   * the only thing that tells a person which is which.
+   */
+  spanKm: number;
 }
 
 /** A line as it appears on a station: enough to draw a chip for it. */

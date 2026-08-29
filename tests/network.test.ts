@@ -5,7 +5,7 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { buildCity, decodeShape, migrateCity, simplify } from '../src/lib/data.ts';
+import { buildCity, decodeShape, migrateCity, placeId, simplify } from '../src/lib/data.ts';
 import { nearest, route } from '../src/lib/graph.ts';
 import type { City, OverpassElement, OverpassMember, OverpassResponse } from '../src/lib/types.ts';
 
@@ -403,5 +403,45 @@ describe('way geometry can arrive separately from the relation', () => {
         },
       ]).lines.length,
     ).toBe(0);
+  });
+});
+
+describe('place results are identified by OSM identity, not by name', () => {
+  // Searching Moscow returns the city and the federal subject under the same
+  // display_name — relations 102269 and 2555133. Keying a list on the name
+  // crashed the whole add-city sheet with Svelte's each_key_duplicate.
+  const moscowCity = {
+    osm_type: 'relation',
+    osm_id: 102269,
+    place_id: 195843076,
+    lat: '55.6',
+    lon: '37.6',
+  };
+  const moscowOblast = {
+    osm_type: 'relation',
+    osm_id: 2555133,
+    place_id: 195720955,
+    lat: '55.7',
+    lon: '37.6',
+  };
+
+  test('two rows sharing a display name still get different ids', () => {
+    expect(placeId(moscowCity)).not.toBe(placeId(moscowOblast));
+  });
+
+  test('the id is the OSM type and id when present', () => {
+    expect(placeId(moscowCity)).toBe('relation/102269');
+  });
+
+  test('falls back to place_id when OSM identity is missing', () => {
+    expect(placeId({ place_id: 42, lat: '1', lon: '2' })).toBe('place/42');
+  });
+
+  test('falls back to coordinates when a row carries neither', () => {
+    expect(placeId({ lat: '1.5', lon: '-0.1' })).toBe('at/1.5,-0.1');
+  });
+
+  test('an id is stable for the same row', () => {
+    expect(placeId(moscowCity)).toBe(placeId({ ...moscowCity }));
   });
 });
