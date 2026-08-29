@@ -1,9 +1,7 @@
-name: build and deploy
+name: deploy
 
 on:
   push:
-    branches: [main]
-  pull_request:
     branches: [main]
   workflow_dispatch:
 
@@ -12,97 +10,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile
-      - name: lint
-        run: bun run lint
-      - name: format
-        run: bun run fmt:check
-      - name: types
-        run: bun run check
-      - name: test
-        run: bun test
-      - name: build
-        run: bun run build
-      - uses: actions/upload-artifact@v7
-        with:
-          name: dist
-          path: dist/
-          retention-days: 7
+  ci:
+    uses: ./.github/workflows/ci.yml
 
+  # The trigger already constrains this to main, so the old ref and event_name
+  # guard is gone. `scope` is the same rule as before, decided in ci.yml: when
+  # every changed path is documentation, no runner is allocated at all.
   deploy:
-    needs: check
-    if: >-
-      github.ref == 'refs/heads/main' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: ci
+    if: needs.ci.outputs.scope == 'full'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       deployments: write
     steps:
       - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-
-      # `check` still runs for every push — oxfmt formats markdown, so a docs
-      # change really can fail it. A deploy, though, is only worth doing when
-      # something that ends up in dist/ actually changed.
-      - name: is there anything to deploy?
-        id: gate
-        run: |
-          set -eu
-          if [ "${{ github.event_name }}" = workflow_dispatch ]; then
-            echo "manually dispatched — deploying"
-            echo "deploy=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          before='${{ github.event.before }}'
-          if [ -z "$before" ] ||
-             [ "$before" = 0000000000000000000000000000000000000000 ] ||
-             ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
-            echo "no usable base commit (first push, or force-push) — deploying"
-            echo "deploy=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          changed=$(git diff --name-only "$before" '${{ github.sha }}')
-          echo "changed since $before:"
-          printf '%s\n' "$changed" | sed 's/^/  /'
-
-          deploy=false
-          while IFS= read -r f; do
-            case "$f" in
-              '' | *.md | .githooks/* | LICENSE | .gitignore) ;;
-              *)
-                echo "-> $f affects the build; deploying"
-                deploy=true
-                break
-                ;;
-            esac
-          done <<EOF
-          $changed
-          EOF
-
-          [ "$deploy" = true ] || echo "-> documentation and hooks only; skipping the deploy"
-          echo "deploy=$deploy" >> "$GITHUB_OUTPUT"
-
       - uses: oven-sh/setup-bun@v2
-        if: steps.gate.outputs.deploy == 'true'
         with:
           bun-version: latest
       - run: bun install --frozen-lockfile
-        if: steps.gate.outputs.deploy == 'true'
       - run: bun run build
-        if: steps.gate.outputs.deploy == 'true'
       - name: deploy to Cloudflare Pages
-        if: steps.gate.outputs.deploy == 'true'
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}

@@ -1,0 +1,93 @@
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_call:
+    outputs:
+      scope:
+        description: full when a changed path can reach dist/, docs when none can.
+        value: ${{ jobs.check.outputs.scope }}
+
+permissions:
+  contents: read
+
+# Keyed so a call from deploy.yml can never queue behind its own caller: on a
+# push there is no PR number, and run_id is unique per run. Cancellation of a
+# superseded push is the caller's job, and it cancels this workflow with it.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      scope: ${{ steps.scope.outputs.scope }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      # oxfmt formats markdown as well as source, so a docs-only push can still
+      # fail fmt:check and that is worth knowing. Only the deploy is ever
+      # skipped — this classifies the push so deploy.yml can decide.
+      - name: what did this push touch?
+        id: scope
+        run: |
+          set -eu
+
+          if [ "${{ github.event_name }}" != push ]; then
+            echo "${{ github.event_name }} — running every gate"
+            echo 'scope=full' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          before='${{ github.event.before }}'
+          if [ -z "$before" ] ||
+             [ "$before" = 0000000000000000000000000000000000000000 ] ||
+             ! git cat-file -e "${before}^{commit}" 2>/dev/null; then
+            echo 'no usable base commit (first push, or force-push) — running every gate'
+            echo 'scope=full' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed=$(git diff --name-only "$before" '${{ github.sha }}')
+          echo "changed since $before:"
+          printf '%s\n' "$changed" | sed 's/^/  /'
+
+          # A heredoc here would have to dedent correctly inside a block scalar,
+          # which only ever worked by accident of indentation. grep -v is total.
+          reaches=$(
+            printf '%s\n' "$changed" |
+              grep -v '^$' |
+              grep -vE '\.md$|^\.githooks/|^LICENSE$|^\.gitignore$' || true
+          )
+
+          if [ -n "$reaches" ]; then
+            echo "-> full: $(printf '%s\n' "$reaches" | head -n 1) reaches the build"
+            echo 'scope=full' >> "$GITHUB_OUTPUT"
+          else
+            echo '-> docs: nothing here reaches dist/'
+            echo 'scope=docs' >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
+      - name: lint
+        run: bun run lint
+      - name: format
+        run: bun run fmt:check
+      - name: types
+        run: bun run check
+      - name: test
+        run: bun test
+      - name: build
+        run: bun run build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
