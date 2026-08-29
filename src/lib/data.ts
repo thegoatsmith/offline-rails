@@ -21,10 +21,15 @@ import type {
   StationLine,
 } from './types.ts';
 
+// overpass.osm.ch used to be third here and was removed: it answers 200 with an
+// empty element list for queries the others serve fully — verified against
+// Lisbon, Moscow and Prague, the last returning 0 elements where overpass-api.de
+// returned 598. A mirror that fails is fine, the fallback handles it. A mirror
+// that lies is worse than no mirror, because being last it was the answer we
+// believed.
 const OVERPASS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
-  'https://overpass.osm.ch/api/interpreter',
 ];
 
 const DB_NAME = 'offline-rails';
@@ -223,6 +228,9 @@ export async function fetchNetwork(
 ): Promise<OverpassResponse> {
   const body = 'data=' + encodeURIComponent(buildQuery(bbox, modes));
   let lastErr: Error | undefined;
+  let sawEmpty = false;
+  let sawFailure = false;
+
   for (const endpoint of OVERPASS) {
     try {
       onProgress?.(`Querying ${new URL(endpoint).hostname}…`);
@@ -234,19 +242,26 @@ export async function fetchNetwork(
       if (res.status === 429 || res.status === 504) throw new Error('Server busy');
       if (!res.ok) throw new Error('Overpass returned ' + res.status);
       const json = (await res.json()) as OverpassResponse;
-      // A loaded mirror can answer 200 with an empty element list. Taken at
-      // face value that surfaces as "No rail lines are mapped here", which
-      // blames the map for a server problem. Try the next mirror instead, and
-      // only believe an empty answer once every mirror agrees on it.
-      if (!json.elements?.length && endpoint !== OVERPASS[OVERPASS.length - 1]) {
+      if (!json.elements?.length) {
+        sawEmpty = true;
         throw new Error('Empty response');
       }
       return json;
     } catch (err) {
+      if ((err as Error).message === 'Empty response') sawEmpty = true;
+      else sawFailure = true;
       lastErr = err as Error;
       onProgress?.(`${new URL(endpoint).hostname} was busy — trying another mirror…`);
     }
   }
+
+  // An empty answer is only the truth when every mirror answered and they all
+  // agreed. If any of them failed outright, the honest report is that the
+  // servers are struggling — saying "nothing is mapped here" would blame the
+  // map for an outage, which is exactly what happened when a mirror that
+  // returns 200-with-nothing sat last in the list.
+  if (sawEmpty && !sawFailure) return { elements: [] };
+
   throw new Error(
     'Every OpenStreetMap mirror is busy. ' + (lastErr?.message || '') + ' Try again in a minute.',
   );

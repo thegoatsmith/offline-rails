@@ -5,7 +5,14 @@
 
 import { describe, expect, test } from 'bun:test';
 
-import { buildCity, decodeShape, migrateCity, placeId, simplify } from '../src/lib/data.ts';
+import {
+  buildCity,
+  decodeShape,
+  fetchNetwork,
+  migrateCity,
+  placeId,
+  simplify,
+} from '../src/lib/data.ts';
 import { nearest, route } from '../src/lib/graph.ts';
 import type { City, OverpassElement, OverpassMember, OverpassResponse } from '../src/lib/types.ts';
 
@@ -443,5 +450,76 @@ describe('place results are identified by OSM identity, not by name', () => {
 
   test('an id is stable for the same row', () => {
     expect(placeId(moscowCity)).toBe(placeId({ ...moscowCity }));
+  });
+});
+
+describe('an empty answer is only believed when every mirror agrees', () => {
+  // The failure this encodes: overpass.osm.ch answers 200 with zero elements for
+  // queries the others serve fully, and sitting last in the mirror list its
+  // answer was the one taken as truth. Two mirrors were down, the third lied,
+  // and the app told the user their city has no railways.
+  const bbox = { south: 0, north: 1, west: 0, east: 1 };
+  const withFetch = async <T>(impl: typeof fetch, run: () => Promise<T>): Promise<T> => {
+    const real = globalThis.fetch;
+    globalThis.fetch = impl;
+    try {
+      return await run();
+    } finally {
+      globalThis.fetch = real;
+    }
+  };
+  const ok = (elements: unknown[]) =>
+    new Response(JSON.stringify({ elements }), { status: 200 }) as Response;
+
+  test('a failing mirror falls through to a working one', async () => {
+    const seen: string[] = [];
+    const res = await withFetch(
+      (async (url: string) => {
+        seen.push(new URL(url).hostname);
+        return seen.length === 1 ? new Response('nope', { status: 500 }) : ok([{ id: 1 }]);
+      }) as unknown as typeof fetch,
+      () => fetchNetwork(bbox, ['subway']),
+    );
+    expect(res.elements.length).toBe(1);
+    expect(seen.length).toBe(2);
+  });
+
+  test('a working first mirror is not followed by a second request', async () => {
+    let calls = 0;
+    await withFetch(
+      (async () => {
+        calls++;
+        return ok([{ id: 1 }]);
+      }) as unknown as typeof fetch,
+      () => fetchNetwork(bbox, ['subway']),
+    );
+    expect(calls).toBe(1);
+  });
+
+  test('every mirror empty is reported as empty, not as an outage', async () => {
+    const res = await withFetch((async () => ok([])) as unknown as typeof fetch, () =>
+      fetchNetwork(bbox, ['subway']),
+    );
+    expect(res.elements.length).toBe(0);
+  });
+
+  test('a failure plus an empty answer is an outage, not an empty city', async () => {
+    let n = 0;
+    const call = withFetch(
+      (async () => {
+        n++;
+        return n === 1 ? new Response('nope', { status: 500 }) : ok([]);
+      }) as unknown as typeof fetch,
+      () => fetchNetwork(bbox, ['subway']),
+    );
+    expect(call).rejects.toThrow(/busy/i);
+  });
+
+  test('all mirrors failing is an outage', async () => {
+    const call = withFetch(
+      (async () => new Response('nope', { status: 500 })) as unknown as typeof fetch,
+      () => fetchNetwork(bbox, ['subway']),
+    );
+    expect(call).rejects.toThrow(/busy/i);
   });
 });
