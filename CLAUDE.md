@@ -97,6 +97,46 @@ sites (`AddCitySheet.download` and the worker) and they must stay in step.
   blame the map when every mirror comes back empty. Expect rate-limiting when
   testing repeatedly — it is per IP and clears in a minute or two.
 
+## Conventions
+
+**Commits are atomic.** One change per commit, each leaving the tree green. When
+work spans several concerns — a parser change and the query change that needed
+it — land them separately so either can be reverted alone. Verify before
+committing, not after: `bun run lint && bun run check && bun test && bun run build`.
+
+**Commit messages** follow one shape throughout the history; `git log` is the
+reference, and new ones should match:
+
+- Imperative mood, sentence case, no trailing period, ≤72 characters.
+  _"Bound the Overpass query to the box that was asked for"_, not
+  _"fix: bounded query"_.
+- **No conventional-commit prefixes.** There are none in the history; don't
+  introduce `feat:` / `fix:` / `chore:`.
+- Blank line, then a body wrapped at ~76 characters.
+- The body explains **why**, with the numbers that justified it — _"223.0 MB ->
+  39.9 MB, 41.1 s -> 7.6 s"_ — and says what was verified and how. Subject says
+  what changed; the diff already shows how.
+- When a change was prompted by a bug, say what the bug actually was, not just
+  that one was fixed. Future readers need the failure mode.
+
+Work goes straight to `main`; CI gates the deploy. There is no branch/PR ritual
+for this repo.
+
+**Formatting and linting are not negotiable by hand.** oxfmt owns style (single
+quotes, 100 columns, semicolons, trailing commas, sorted imports) — run
+`bun run fmt`, don't hand-format. oxlint runs with `--deny-warnings`, so a new
+warning fails the build; fix it or turn the rule off _with a recorded reason_,
+as the existing exceptions are.
+
+**Naming.** Components are `PascalCase.svelte`; library modules are lowercase,
+hyphenated when they need more than one word (`worker-client.ts`), with Svelte's
+own suffixes where they apply (`state.svelte.ts`, `builder.worker.ts`).
+
+**Tests** are grouped by behaviour with `describe`, and both the group and the
+test read as English sentences — `describe('old records migrate without a
+network')`, `test('a real corner survives')`. A test that exists because
+something broke should carry a comment saying what broke; several already do.
+
 ## Product constraints
 
 These are the reason the project exists — it replaces an app that went from a
