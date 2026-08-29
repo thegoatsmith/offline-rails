@@ -1,137 +1,21 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
-<title>Interchange — offline metro maps</title>
-<meta name="description" content="Download a city's metro network once, read it forever without a signal.">
-<link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#14171c">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Interchange">
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<link rel="icon" href="icons/icon-192.png">
-<link rel="stylesheet" href="styles.css">
-</head>
-<body>
-
-<header class="bar">
-  <button id="btn-cities" class="bar-btn" aria-label="Saved cities">
-    <span class="glyph-stack" aria-hidden="true"></span>
-  </button>
-  <div class="bar-title">
-    <span id="city-name">No city loaded</span>
-    <span id="net-state" class="net-state" data-state="unknown">checking</span>
-  </div>
-  <button id="btn-locate" class="bar-btn" aria-label="Find nearest station">
-    <span class="glyph-target" aria-hidden="true"></span>
-  </button>
-</header>
-
-<main id="stage">
-  <svg id="map" role="img" aria-label="Metro network diagram">
-    <g id="viewport">
-      <g id="layer-lines"></g>
-      <g id="layer-links"></g>
-      <g id="layer-stations"></g>
-      <g id="layer-labels"></g>
-      <g id="layer-route"></g>
-      <g id="layer-me"></g>
-    </g>
-  </svg>
-
-  <div id="empty" class="empty">
-    <p class="empty-kicker">Nothing cached yet</p>
-    <h1 class="empty-head">Add a city while<br>you still have signal.</h1>
-    <p class="empty-body">Interchange pulls the network from OpenStreetMap once, stores it on this device, and never needs the internet again.</p>
-    <button id="btn-add-first" class="btn-primary">Add a city</button>
-  </div>
-
-  <div id="zoomhint" class="zoomhint" hidden>Pinch to zoom · tap a station to route</div>
-</main>
-
-<!-- Trip planner dock -->
-<section id="dock" class="dock" hidden>
-  <div class="dock-grip"></div>
-  <div class="dock-fields">
-    <div class="field" data-slot="from">
-      <span class="field-dot from"></span>
-      <button class="field-btn" id="slot-from">Choose start</button>
-      <button class="field-clear" data-clear="from" aria-label="Clear start">×</button>
-    </div>
-    <div class="field" data-slot="to">
-      <span class="field-dot to"></span>
-      <button class="field-btn" id="slot-to">Choose destination</button>
-      <button class="field-clear" data-clear="to" aria-label="Clear destination">×</button>
-    </div>
-  </div>
-  <div id="trip" class="trip"></div>
-</section>
-
-<!-- Station picker / search -->
-<dialog id="dlg-search" class="sheet">
-  <div class="sheet-head">
-    <input id="search-input" type="search" placeholder="Search stations" autocomplete="off" enterkeyhint="search">
-    <button id="search-close" class="sheet-close" aria-label="Close">Done</button>
-  </div>
-  <ul id="search-results" class="list"></ul>
-</dialog>
-
-<!-- Station action sheet -->
-<dialog id="dlg-station" class="sheet sheet-short">
-  <div class="sheet-head">
-    <div>
-      <h2 id="st-name">Station</h2>
-      <p id="st-lines" class="st-lines"></p>
-    </div>
-    <button id="st-close" class="sheet-close" aria-label="Close">Done</button>
-  </div>
-  <div class="sheet-actions">
-    <button id="st-from" class="btn-ghost">Start here</button>
-    <button id="st-to" class="btn-primary">End here</button>
-  </div>
-</dialog>
-
-<!-- Cities / storage -->
-<dialog id="dlg-cities" class="sheet">
-  <div class="sheet-head">
-    <h2>Cities on this device</h2>
-    <button id="cities-close" class="sheet-close" aria-label="Close">Done</button>
-  </div>
-  <ul id="city-list" class="list"></ul>
-  <div class="sheet-actions column">
-    <button id="btn-add-city" class="btn-primary">Add a city</button>
-    <p id="storage-note" class="note"></p>
-  </div>
-</dialog>
-
-<!-- Add city flow -->
-<dialog id="dlg-add" class="sheet">
-  <div class="sheet-head">
-    <input id="place-input" type="search" placeholder="City name, e.g. Lisbon" autocomplete="off" enterkeyhint="search">
-    <button id="add-close" class="sheet-close" aria-label="Cancel">Cancel</button>
-  </div>
-
-  <div class="modes" id="mode-picker">
-    <label><input type="checkbox" value="subway" checked> Metro</label>
-    <label><input type="checkbox" value="light_rail" checked> Light rail</label>
-    <label><input type="checkbox" value="tram"> Tram</label>
-    <label><input type="checkbox" value="monorail"> Monorail</label>
-    <label><input type="checkbox" value="train"> Suburban rail</label>
-  </div>
-
-  <ul id="place-results" class="list"></ul>
-
-  <div id="fetch-status" class="fetch-status" hidden>
-    <div class="fetch-line"><span class="tick" data-step="geo"></span> Locating the city</div>
-    <div class="fetch-line"><span class="tick" data-step="query"></span> Asking OpenStreetMap for the network</div>
-    <div class="fetch-line"><span class="tick" data-step="build"></span> Building the map and route graph</div>
-    <div class="fetch-line"><span class="tick" data-step="save"></span> Saving to this device</div>
-    <p id="fetch-msg" class="note"></p>
-  </div>
-</dialog>
-
-<script type="module" src="app.js"></script>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Offline Rails — metro maps that work without signal</title>
+    <meta
+      name="description"
+      content="Pulls a city's rail network from OpenStreetMap once, stores it on your device, and never needs the internet again."
+    />
+    <meta name="theme-color" content="#16181c" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <link rel="icon" href="/icons/icon-192.png" />
+    <link rel="stylesheet" href="/main.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/main.js"></script>
+  </body>
 </html>

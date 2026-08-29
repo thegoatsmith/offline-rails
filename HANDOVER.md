@@ -1,4 +1,4 @@
-# HANDOVER — Interchange
+# HANDOVER — Offline Rails
 
 Paste this into a fresh Claude Code session at the repo root, or keep it as
 `HANDOVER.md` and open with "Read HANDOVER.md and pick up from Next up."
@@ -117,7 +117,7 @@ accepts both response shapes, so the old fixtures still work and the query could
 be reverted without touching the parser.
 
 **The network is clipped to the bounding box that was asked for.** Overpass
-selects a relation if *any* member falls in the box and `out geom` then returns
+selects a relation if _any_ member falls in the box and `out geom` then returns
 that relation whole. Ask for Moscow with suburban rail and you get Russian
 Railways services entire: 59% of the stations and 89% of the geometry sat
 outside the requested box, including a route from Khabarovsk 6,500 km away, and
@@ -179,6 +179,7 @@ come up the stairs.
 ## State: what is and isn't verified
 
 Verified:
+
 - `node tests/network.test.mjs` — 29 assertions covering station merging, line
   attribution, change counting, leg collapsing, walking interchanges, the
   platform-only tagging fallback, and way chaining. All passing.
@@ -198,23 +199,23 @@ Verified:
 
 What the fixes were worth, before and after:
 
-| | stations | points | store | per interaction | heap |
-|---|---|---|---|---|---|
-| Lisbon before | 173 | 8,731 | 0.3 MB | 3.8 ms | 4 MB |
-| Lisbon after | 173 | 868 | ~0.1 MB | 3.9 ms | 15 MB |
-| London before | 1,319 | 963,098 | 23.6 MB | 22.1 ms | 104 MB |
-| London after | 916 | 50,142 | 0.4 MB | 7.3 ms | 16 MB |
-| Moscow before | 2,402 | 5,450,962 | 132.5 MB | 60.0 ms | 945 MB |
-| Moscow after | 975 | 104,519 | 0.8 MB | 8.6 ms | 16 MB |
+|               | stations | points    | store    | per interaction | heap   |
+| ------------- | -------- | --------- | -------- | --------------- | ------ |
+| Lisbon before | 173      | 8,731     | 0.3 MB   | 3.8 ms          | 4 MB   |
+| Lisbon after  | 173      | 868       | ~0.1 MB  | 3.9 ms          | 15 MB  |
+| London before | 1,319    | 963,098   | 23.6 MB  | 22.1 ms         | 104 MB |
+| London after  | 916      | 50,142    | 0.4 MB   | 7.3 ms          | 16 MB  |
+| Moscow before | 2,402    | 5,450,962 | 132.5 MB | 60.0 ms         | 945 MB |
+| Moscow after  | 975      | 104,519   | 0.8 MB   | 8.6 ms          | 16 MB  |
 
 And the densest networks, all after:
 
-| | stations | labels drawn | per interaction | worst | pan |
-|---|---|---|---|---|---|
-| Tokyo | 1,443 | 238 | 10.9 ms | 13.9 ms | 0.7 ms |
-| Paris | 972 | 151 | 7.8 ms | 9.1 ms | 0.4 ms |
-| New York | 681 | 128 | 5.4 ms | 7.8 ms | 0.3 ms |
-| Seoul | 572 | 117 | 5.5 ms | 7.4 ms | 0.3 ms |
+|          | stations | labels drawn | per interaction | worst   | pan    |
+| -------- | -------- | ------------ | --------------- | ------- | ------ |
+| Tokyo    | 1,443    | 238          | 10.9 ms         | 13.9 ms | 0.7 ms |
+| Paris    | 972      | 151          | 7.8 ms          | 9.1 ms  | 0.4 ms |
+| New York | 681      | 128          | 5.4 ms          | 7.8 ms  | 0.3 ms |
+| Seoul    | 572      | 117          | 5.5 ms          | 7.4 ms  | 0.3 ms |
 
 Tokyo is the worst case in the world for this app and it sits inside the 16.7 ms
 frame budget with its worst frame, not just its median. Seven cities together
@@ -223,7 +224,7 @@ line 2, line 1, AREX and the Goldline; Paris runs M12 to RER C to RER B; New
 York goes 5 then 6. They are correct journeys, not merely paths.
 
 **How to measure this, because it is easy to get wrong.** Figures are medians
-over 12–14 events with `requestAnimationFrame` held synchronous for the *whole*
+over 12–14 events with `requestAnimationFrame` held synchronous for the _whole_
 run, city loads included. Two traps cost real time here: a background tab pauses
 rAF, so the deferred pass never runs and every label stays on screen — the tell
 is `labelsShown` equalling `labelsTotal`; and calling `getBBox()` inside the
@@ -231,7 +232,8 @@ timing loop forces a layout the wheel event just dirtied, which inflated Paris
 from 7.8 ms to 94.7 ms. Measure the handler, and check `labelsShown` first.
 
 **Not verified — start here:**
-- Benchmarks are only trustworthy for the *first* city measured after a page
+
+- Benchmarks are only trustworthy for the _first_ city measured after a page
   load. Whichever city is measured second reads 5–8x slower — Tokyo-first was
   13.8 ms with Paris-second at 82.6 ms, then Paris-first was 8.8 ms with
   Tokyo-second at 73.9 ms. It is the teardown of the previous city's several
@@ -298,7 +300,7 @@ HTTP cache is keyed by origin.
 **Bump `CACHE` in `sw.js` whenever a shell file changes.** The fetch handler is
 cache-first with no revalidation, so a client that has already installed serves
 the old modules forever until that constant changes and `activate` sweeps the
-previous cache. It is `interchange-v6` as of the background builder.
+previous cache. It is `offline-rails-v1` as of the Svelte migration.
 
 Good first cities to test with: Lisbon or Prague (small, well mapped, fast
 query). Tokyo works but the query is heavy and needs suburban rail enabled to
@@ -322,18 +324,18 @@ path needs real-world testing.
 3. **Update rather than re-download.** Re-run the query for a saved city and
    diff, so a refresh does not cost a full download. Much more attractive now
    that a refresh is 40 MB rather than 223 MB.
-3. **Update rather than re-download.** Re-run the query for a saved city and
+4. **Update rather than re-download.** Re-run the query for a saved city and
    diff, so a refresh doesn't cost a full download.
-4. **Export/import a city pack** as JSON, so a travel companion can load a
+5. **Export/import a city pack** as JSON, so a travel companion can load a
    network without hitting Overpass at all. Also makes fixture capture easy.
-5. **GTFS import** for real timetables, as an optional per-city pack so the
+6. **GTFS import** for real timetables, as an optional per-city pack so the
    base download stays small. Only for cities that publish feeds.
-6. **Octilinear rendering.** The ambitious one. Snap edges to 45° increments
+7. **Octilinear rendering.** The ambitious one. Snap edges to 45° increments
    with a local search pass while keeping stations near true positions.
 
 ## Style notes
 
-Comments in this codebase explain *why*, not what — keep that. UI copy is
+Comments in this codebase explain _why_, not what — keep that. UI copy is
 sentence case, active voice, and never apologises; errors say what happened and
 what to do about it ("No rail lines are mapped here for the modes you picked.
 Try adding tram or suburban rail."). The interface has exactly one accent

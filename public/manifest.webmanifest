@@ -1,0 +1,17 @@
+{
+  "name": "Offline Rails",
+  "short_name": "Offline Rails",
+  "description": "A metro map you own. Pulls a city's rail network from OpenStreetMap once, then works with no signal.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#16181c",
+  "theme_color": "#16181c",
+  "categories": ["travel", "navigation", "utilities"],
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

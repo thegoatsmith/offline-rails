@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- The app's own palette: grey chrome, one sodium-yellow accent, and the
+       operators' colours never appear in the chrome. The mark is an
+       interchange — two lines meeting at a station, which is the one thing
+       this app exists to show you. -->
+  <rect width="512" height="512" rx="112" fill="#16181c"/>
+  <g fill="none" stroke-linecap="round" stroke-width="34">
+    <path d="M112 168 H288 a56 56 0 0 1 56 56 V400" stroke="#3a72c4"/>
+    <path d="M112 344 H232 a56 56 0 0 0 56 -56 V112" stroke="#e0b530"/>
+  </g>
+  <circle cx="288" cy="288" r="46" fill="#16181c" stroke="#e9ecf1" stroke-width="22"/>
+</svg>

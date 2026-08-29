@@ -1,0 +1,780 @@
+/* Interchange
+   Chrome stays graphite and quiet on purpose: every colour you see in the
+   diagram is the transit operator's own line colour, straight from OSM.
+   The one interface colour is sodium — the tunnel-lamp yellow — used only
+   for "this is cached and lit up" states. */
+
+:root {
+  --ink: #101317;
+  --ink-raised: #191d23;
+  --ink-edge: #262c34;
+  --chalk: #e7eaee;
+  --chalk-dim: #8b939e;
+  --sodium: #e8c15a;
+  --paper: #f4f5f7;
+
+  --ui: ui-sans-serif, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  --data: ui-monospace, 'SF Mono', 'Roboto Mono', Menlo, monospace;
+
+  --bar-h: 52px;
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overscroll-behavior: none;
+  background: var(--ink);
+  color: var(--chalk);
+  font-family: var(--ui);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Svelte mounts into #app, so the column layout that used to sit on <body>
+   has to live on the mount point too — otherwise #stage is a grandchild of the
+   flex container and collapses to zero height. */
+body,
+#app {
+  display: flex;
+  flex-direction: column;
+}
+
+#app {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* ---------- top bar ---------- */
+
+.bar {
+  flex: 0 0 auto;
+  height: calc(var(--bar-h) + var(--safe-t));
+  padding: var(--safe-t) 6px 0;
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  background: var(--ink-raised);
+  border-bottom: 1px solid var(--ink-edge);
+  position: relative;
+  z-index: 5;
+}
+
+.bar-btn {
+  height: 40px;
+  width: 40px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--chalk);
+  cursor: pointer;
+  border-radius: 10px;
+}
+.bar-btn:active {
+  background: var(--ink-edge);
+}
+.bar-btn:focus-visible {
+  outline: 2px solid var(--sodium);
+  outline-offset: 2px;
+}
+
+.glyph-stack,
+.glyph-target {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+.glyph-stack {
+  border-top: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  position: relative;
+}
+.glyph-stack::after {
+  content: '';
+  position: absolute;
+  inset: 7px 0 auto 0;
+  border-top: 2px solid currentColor;
+}
+.glyph-target {
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  position: relative;
+}
+.glyph-target::after {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  background: currentColor;
+  border-radius: 50%;
+}
+
+.bar-title {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+#city-name {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.net-state {
+  font-family: var(--data);
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--chalk-dim);
+}
+.net-state[data-state='offline'] {
+  color: var(--sodium);
+}
+
+/* ---------- map stage ---------- */
+
+#stage {
+  flex: 1 1 auto;
+  position: relative;
+  overflow: hidden;
+}
+
+#map {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: grab;
+  display: block;
+}
+#map:active {
+  cursor: grabbing;
+}
+
+#layer-lines path {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+#layer-links path {
+  fill: none;
+  stroke: var(--chalk-dim);
+  stroke-dasharray: 1 4;
+  opacity: 0.5;
+}
+
+/* Stations and type must stay the same size on screen however far you zoom.
+   --inv is 1/scale, set once per zoom by mapview; everything below derives its
+   size from it. Doing this in CSS rather than JS matters more than it looks:
+   Tokyo puts 2,802 station circles on screen at once, and writing r on each of
+   them per frame cost more than the whole frame budget. One property write
+   replaces 5,604 of them. mapview falls back to writing attributes directly if
+   a browser does not support SVG geometry properties in CSS. */
+#map {
+  --inv: 1;
+}
+
+.station {
+  fill: var(--ink);
+  stroke: var(--chalk);
+  stroke-width: 1.6px;
+}
+.station.interchange {
+  fill: var(--paper);
+  stroke: var(--ink);
+  stroke-width: 1.2px;
+}
+.station.hit {
+  fill: transparent;
+  stroke: none;
+  pointer-events: all;
+}
+
+#map.css-sized .station {
+  r: calc(3px * var(--inv));
+}
+#map.css-sized .station.interchange {
+  r: calc(4.6px * var(--inv));
+}
+#map.css-sized .station.hit {
+  r: calc(14px * var(--inv));
+}
+
+.slabel {
+  fill: var(--chalk);
+  font-family: var(--ui);
+  font-size: 9px;
+  font-weight: 500;
+  paint-order: stroke;
+  stroke: var(--ink);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+/* Size still comes from --inv, but position does not: each label is placed
+   individually now, on whichever side of its station is free, so x and y are
+   written by mapview. They only change when the zoom does. */
+#map.css-sized .slabel {
+  font-size: calc(10px * var(--inv));
+  stroke-width: calc(3.5px * var(--inv));
+}
+
+#map.css-sized .endcap {
+  r: calc(7px * var(--inv));
+}
+#map.css-sized .me {
+  r: calc(6px * var(--inv));
+}
+#map.css-sized .me-halo {
+  r: calc(26px * var(--inv));
+}
+
+#layer-route path {
+  fill: none;
+  stroke: var(--sodium);
+  stroke-width: 6px;
+  opacity: 0.9;
+  stroke-linecap: round;
+}
+.endcap {
+  fill: var(--sodium);
+  stroke: var(--ink);
+  stroke-width: 2px;
+}
+.me {
+  fill: #4aa3ff;
+  stroke: #fff;
+  stroke-width: 2px;
+}
+.me-halo {
+  fill: #4aa3ff;
+  opacity: 0.18;
+}
+
+/* ---------- empty state ---------- */
+
+.empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 28px 26px calc(60px + var(--safe-b));
+  background: var(--ink);
+}
+.empty > * {
+  max-width: 30rem;
+  width: 100%;
+}
+#btn-add-first {
+  width: auto;
+  min-width: 15rem;
+}
+
+/* On a wide window the copy shouldn't drift into a lonely left column. */
+@media (min-width: 720px) {
+  .empty {
+    padding-left: 56px;
+    padding-right: 56px;
+  }
+  .empty-head {
+    font-size: 44px;
+  }
+}
+.empty[hidden] {
+  display: none;
+}
+.empty-kicker {
+  margin: 0;
+  font-family: var(--data);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--sodium);
+}
+.empty-head {
+  margin: 0;
+  font-size: clamp(28px, 8.5vw, 40px);
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+  font-weight: 660;
+}
+.empty-body {
+  margin: 0 0 8px;
+  max-width: 34ch;
+  color: var(--chalk-dim);
+  font-size: 14.5px;
+  line-height: 1.5;
+}
+
+/* ---------- buttons ---------- */
+
+.btn-primary,
+.btn-ghost {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 13px 18px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+.btn-primary {
+  background: var(--sodium);
+  color: #17120a;
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--chalk);
+  border-color: var(--ink-edge);
+}
+.btn-primary:active,
+.btn-ghost:active {
+  transform: translateY(1px);
+}
+.btn-primary:focus-visible,
+.btn-ghost:focus-visible {
+  outline: 2px solid var(--sodium);
+  outline-offset: 2px;
+}
+.btn-primary[disabled] {
+  opacity: 0.5;
+}
+
+.zoomhint {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  font-family: var(--data);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--chalk-dim);
+  background: rgba(16, 19, 23, 0.8);
+  padding: 6px 10px;
+  border-radius: 999px;
+  pointer-events: none;
+}
+
+/* ---------- trip dock ---------- */
+
+.dock {
+  flex: 0 0 auto;
+  background: var(--ink-raised);
+  border-top: 1px solid var(--ink-edge);
+  padding: 8px 14px calc(10px + var(--safe-b));
+  z-index: 4;
+  max-height: 52vh;
+  overflow-y: auto;
+}
+.dock[hidden] {
+  display: none;
+}
+.dock-grip {
+  width: 34px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--ink-edge);
+  margin: 2px auto 10px;
+}
+
+.dock-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--ink);
+  border: 1px solid var(--ink-edge);
+  border-radius: 11px;
+  padding: 0 6px 0 12px;
+}
+.field-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  border: 2px solid var(--chalk);
+}
+.field-dot.to {
+  background: var(--sodium);
+  border-color: var(--sodium);
+}
+.field-btn {
+  flex: 1 1 auto;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 13px 0;
+  color: var(--chalk);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.field-clear {
+  background: none;
+  border: 0;
+  color: var(--chalk-dim);
+  font-size: 20px;
+  line-height: 1;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+/* the strip diagram — the one thing this app should be remembered for */
+.trip {
+  margin-top: 12px;
+}
+.trip:empty {
+  display: none;
+}
+
+.trip-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: var(--data);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--chalk-dim);
+  margin-bottom: 10px;
+}
+.trip-head strong {
+  color: var(--chalk);
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+
+.leg {
+  display: grid;
+  grid-template-columns: 26px 1fr;
+  column-gap: 12px;
+}
+.spine {
+  position: relative;
+}
+.spine::before {
+  content: '';
+  position: absolute;
+  left: 11px;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--leg-colour, var(--chalk-dim));
+}
+.leg.walk .spine::before {
+  background: repeating-linear-gradient(to bottom, var(--chalk-dim) 0 3px, transparent 3px 7px);
+  width: 2px;
+  left: 12px;
+}
+.node {
+  position: absolute;
+  left: 6px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ink-raised);
+  border: 3px solid var(--leg-colour, var(--chalk-dim));
+}
+.node.start {
+  top: 2px;
+}
+.node.end {
+  bottom: 2px;
+}
+
+.leg-body {
+  padding: 0 0 16px;
+}
+.leg-line {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 3px;
+}
+.bullet {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-family: var(--data);
+  font-size: 11px;
+  font-weight: 700;
+  color: #fff;
+  background: var(--leg-colour, var(--chalk-dim));
+}
+.leg-stops {
+  font-family: var(--data);
+  font-size: 11px;
+  color: var(--chalk-dim);
+  letter-spacing: 0.04em;
+}
+.leg-station {
+  font-size: 14.5px;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+}
+.leg-station.terminal {
+  padding-top: 2px;
+}
+.leg-note {
+  font-size: 12.5px;
+  color: var(--chalk-dim);
+}
+
+.trip-fail {
+  color: var(--chalk-dim);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ---------- sheets ---------- */
+
+.sheet {
+  border: 0;
+  padding: 0;
+  width: 100%;
+  max-width: 560px;
+  max-height: 88dvh;
+  margin: auto auto 0;
+  background: var(--ink-raised);
+  color: var(--chalk);
+  border-radius: 18px 18px 0 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.sheet:not([open]) {
+  display: none;
+}
+.sheet::backdrop {
+  background: rgba(8, 10, 12, 0.62);
+}
+.sheet[open] {
+  animation: rise 0.18s ease-out;
+}
+@keyframes rise {
+  from {
+    transform: translateY(14px);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sheet[open] {
+    animation: none;
+  }
+}
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid var(--ink-edge);
+}
+.sheet-head h2 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+.sheet-head input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--ink);
+  color: var(--chalk);
+  border: 1px solid var(--ink-edge);
+  border-radius: 10px;
+  padding: 11px 12px;
+  font: inherit;
+  font-size: 16px;
+}
+.sheet-head input:focus {
+  outline: 2px solid var(--sodium);
+  outline-offset: -1px;
+}
+.sheet-close {
+  background: none;
+  border: 0;
+  color: var(--sodium);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  padding: 8px 4px;
+  cursor: pointer;
+}
+.st-lines {
+  margin: 3px 0 0;
+  font-family: var(--data);
+  font-size: 11px;
+  color: var(--chalk-dim);
+}
+
+.sheet-actions {
+  display: flex;
+  gap: 10px;
+  padding: 14px calc(14px + var(--safe-b)/2) calc(16px + var(--safe-b));
+}
+.sheet-actions.column {
+  flex-direction: column;
+}
+.sheet-actions > * {
+  flex: 1 1 0;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.list li {
+  border-bottom: 1px solid var(--ink-edge);
+}
+.list button.row {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: 0;
+  padding: 13px 14px;
+  color: var(--chalk);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.list button.row:active {
+  background: var(--ink);
+}
+.row-sub {
+  font-family: var(--data);
+  font-size: 10.5px;
+  color: var(--chalk-dim);
+  letter-spacing: 0.05em;
+}
+.row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.row-main span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-del {
+  background: none;
+  border: 0;
+  color: var(--chalk-dim);
+  font-size: 13px;
+  padding: 8px;
+  cursor: pointer;
+}
+
+.modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--ink-edge);
+}
+.modes label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  background: var(--ink);
+  border: 1px solid var(--ink-edge);
+  border-radius: 999px;
+  padding: 7px 11px;
+  cursor: pointer;
+}
+.modes input {
+  accent-color: var(--sodium);
+  margin: 0;
+}
+
+.fetch-status {
+  padding: 16px 14px calc(18px + var(--safe-b));
+}
+.fetch-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--chalk-dim);
+  padding: 5px 0;
+}
+.fetch-line.active {
+  color: var(--chalk);
+}
+.fetch-line.done {
+  color: var(--chalk);
+}
+.tick {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid var(--ink-edge);
+  flex: 0 0 auto;
+}
+.fetch-line.active .tick {
+  border-color: var(--sodium);
+  animation: pulse 1s ease-in-out infinite;
+}
+.fetch-line.done .tick {
+  background: var(--sodium);
+  border-color: var(--sodium);
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fetch-line.active .tick {
+    animation: none;
+  }
+}
+
+.note {
+  margin: 10px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--chalk-dim);
+}
+.note strong {
+  color: var(--sodium);
+  font-weight: 600;
+}

@@ -1,4 +1,4 @@
-# Interchange
+# Offline Rails
 
 An offline metro map you own. Add a city while you have signal; it pulls that
 city's rail network from OpenStreetMap, folds it into a map plus a routing
@@ -10,7 +10,7 @@ the network again — no subscription, no per-city unlock, no ads, no tracking.
 Service workers need a real origin, so open it over HTTP rather than `file://`:
 
 ```bash
-cd interchange
+cd offline-rails
 python3 -m http.server 8000 --protocol HTTP/1.1
 # then http://localhost:8000
 ```
@@ -39,13 +39,13 @@ sheet tells you whether storage is actually marked persistent.
 
 ## How it works
 
-| File | Job |
-|---|---|
-| `data.js` | Nominatim geocode → Overpass query → station merging → routing graph → IndexedDB |
-| `graph.js` | Dijkstra over `(station, line)` states so interchanges cost real time |
-| `mapview.js` | SVG rendering, pan and pinch, screen-constant station sizes |
-| `app.js` | UI: cities, search, trip strip diagram, geolocation |
-| `sw.js` | Precaches the shell. Never caches Overpass or Nominatim |
+| File         | Job                                                                              |
+| ------------ | -------------------------------------------------------------------------------- |
+| `data.js`    | Nominatim geocode → Overpass query → station merging → routing graph → IndexedDB |
+| `graph.js`   | Dijkstra over `(station, line)` states so interchanges cost real time            |
+| `mapview.js` | SVG rendering, pan and pinch, screen-constant station sizes                      |
+| `app.js`     | UI: cities, search, trip strip diagram, geolocation                              |
+| `sw.js`      | Precaches the shell. Never caches Overpass or Nominatim                          |
 
 **Station merging.** OSM has one stop node per platform per direction. Stops
 sharing a name within 900 m collapse into one station; unnamed ones merge

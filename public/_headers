@@ -1,0 +1,30 @@
+# Cloudflare Pages headers.
+#
+# The build emits stable filenames with no content hashes (see build.ts), so
+# nothing here may be cached immutably — an immutable main.js would strand
+# people on an old build forever. Everything revalidates; the service worker is
+# what makes the app fast offline, not the HTTP cache.
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+  X-Frame-Options: DENY
+  Permissions-Policy: geolocation=(self), interest-cohort=()
+
+/sw.js
+  Cache-Control: no-cache
+  Service-Worker-Allowed: /
+
+/main.js
+  Cache-Control: no-cache
+/main.css
+  Cache-Control: no-cache
+/builder.worker.js
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+
+# Content-addressed by their own bytes and referenced from the manifest, so a
+# long life is safe here.
+/icons/*
+  Cache-Control: public, max-age=604800
