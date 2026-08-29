@@ -28,13 +28,17 @@ bun run build
 
 ## Put it on your phone
 
-Any static host works — GitHub Pages, Netlify drop, Cloudflare Pages, a folder
-on your own server. It's plain files, no build step.
+It's live at **https://offline-rails.pages.dev** — open that on your phone and
+skip to step 3.
 
-1. Push this folder to a repo, enable GitHub Pages (or drag it onto
-   netlify.com/drop).
-2. Open the HTTPS URL on your phone. HTTPS is required for the service worker
-   and for geolocation.
+Pushing to `main` builds and deploys through GitHub Actions to Cloudflare Pages,
+gated on lint, format, types and tests. To host it yourself, `bun run build` and
+serve `dist/` from any static host — it's plain files once built, with no server
+or runtime behind it.
+
+1. Deploy `dist/`, or use the URL above.
+2. Open it over HTTPS. HTTPS is required for the service worker and for
+   geolocation.
 3. iOS: Share → Add to Home Screen. Android: the install prompt appears on its
    own.
 
@@ -45,13 +49,18 @@ sheet tells you whether storage is actually marked persistent.
 
 ## How it works
 
-| File         | Job                                                                              |
-| ------------ | -------------------------------------------------------------------------------- |
-| `data.js`    | Nominatim geocode → Overpass query → station merging → routing graph → IndexedDB |
-| `graph.js`   | Dijkstra over `(station, line)` states so interchanges cost real time            |
-| `mapview.js` | SVG rendering, pan and pinch, screen-constant station sizes                      |
-| `app.js`     | UI: cities, search, trip strip diagram, geolocation                              |
-| `sw.js`      | Precaches the shell. Never caches Overpass or Nominatim                          |
+| File                        | Job                                                                        |
+| --------------------------- | -------------------------------------------------------------------------- |
+| `src/lib/data.ts`           | Nominatim geocode → Overpass → station merging → routing graph → IndexedDB |
+| `src/lib/graph.ts`          | Dijkstra over `(station, line)` states so interchanges cost real time      |
+| `src/lib/mapview.ts`        | SVG rendering, pan and pinch, culling, label placement                     |
+| `src/lib/builder.worker.ts` | The same build chain, off the main thread                                  |
+| `src/ui/*.svelte`           | Cities, search, trip strip, the add-a-city flow                            |
+| `src/sw.ts`                 | Precaches the shell. Never caches Overpass or Nominatim                    |
+
+The renderer is deliberately imperative and lives outside Svelte — it is the
+only hot path, and a component diffing thousands of SVG nodes a frame would
+undo the culling that makes a network the size of Tokyo pan at all.
 
 **Station merging.** OSM has one stop node per platform per direction. Stops
 sharing a name within 900 m collapse into one station; unnamed ones merge
@@ -61,7 +70,7 @@ is how out-of-station interchanges like Bank–Monument work.
 **Timing.** There are no timetables in this, so times are modelled: distance
 over an average speed per mode, 25 s dwell per stop, 45 s plus walking distance
 for a foot transfer, and a 4 minute penalty for changing lines. Trip times read
-"estimated" because they are. Constants live at the top of `data.js`.
+"estimated" because they are. Constants live at the top of `src/lib/data.ts`.
 
 **Colours.** Every colour in the diagram is the operator's own `colour` tag
 from OSM. The app's chrome stays grey so it doesn't fight the network.
@@ -89,6 +98,28 @@ from OSM. The app's chrome stays grey so it doesn't fight the network.
 4. **Update check** — re-run the query and diff, rather than re-downloading.
 5. **Share a pack** — export a city as a JSON file so a travel companion can
    import it without hitting Overpass at all.
+
+## Working on it
+
+```bash
+bun install            # also points git at the versioned hooks
+bun run dev            # build + serve on :8080, watching
+bun test               # 35 assertions, no browser, no network
+bun run check          # TypeScript 7, then svelte-check
+bun run lint           # oxlint --deny-warnings
+bun run fmt            # oxfmt
+```
+
+Commit subjects follow [Conventional Commits](https://www.conventionalcommits.org):
+`type(scope): subject`, under 72 characters, lowercase after the colon. A
+`commit-msg` hook in `.githooks/` enforces it, and `bun install` wires it up.
+Scopes follow the layout — `data`, `graph`, `mapview`, `ui`, `worker`, `sw`,
+`build`, `ci`, `deps`.
+
+The subject is the easy half. The body is where a commit earns its keep: say
+why, carry the numbers that justified it, and when a bug prompted the change,
+say what the bug actually was. CLAUDE.md has the full conventions and the
+architecture notes worth reading before changing `data.ts` or `mapview.ts`.
 
 ## Attribution
 

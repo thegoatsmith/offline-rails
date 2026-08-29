@@ -1,0 +1,73 @@
+#!/bin/sh
+# Enforce Conventional Commits on the subject line.
+#
+# Versioned here rather than in .git/hooks so it actually reaches everyone;
+# `bun install` points core.hooksPath at this directory via the prepare script.
+# Only the subject is checked — the body rules in CLAUDE.md are about judgement
+# and a regex would only teach people to write past it.
+
+subject=$(head -n 1 "$1")
+
+# Git's own machinery writes these; leave them alone.
+case "$subject" in
+  "Merge "* | "Revert "* | fixup!* | squash!* | amend!*) exit 0 ;;
+esac
+
+# Empty or comment-only: git aborts on its own, with a better message.
+case "$(printf '%s' "$subject" | tr -d '[:space:]')" in
+  '' | '#'*) exit 0 ;;
+esac
+
+types='feat|fix|perf|refactor|docs|test|build|ci|chore'
+
+reject() {
+  printf '\n  ✗ %s\n\n' "$1" >&2
+  printf '    %s\n\n' "$subject" >&2
+  cat >&2 <<EOF
+    Subjects follow Conventional Commits:
+
+      type(scope): subject
+
+    type   $(printf '%s' "$types" | tr '|' ' ')
+           reach for perf when the justification is a measurement
+    scope  data graph mapview ui worker sw build ci deps — optional
+    !      before the colon for a breaking change, with a
+           BREAKING CHANGE: footer saying what callers must now do
+
+    e.g.   perf(mapview): place labels against an occupancy grid
+           fix(data): identify place results by OSM identity
+
+    The body still has to say why, carry the numbers, and name the
+    failure mode when a bug prompted it. See CLAUDE.md.
+
+    To bypass once: git commit --no-verify
+
+EOF
+  exit 1
+}
+
+if ! printf '%s' "$subject" | grep -qE "^($types)(\([a-z0-9-]+\))?!?: .+"; then
+  reject "subject does not match type(scope): subject"
+fi
+
+if [ ${#subject} -gt 72 ]; then
+  reject "subject is ${#subject} characters; keep it under 72"
+fi
+
+case "$subject" in
+  *.) reject "subject ends with a full stop" ;;
+esac
+
+# Lowercase after the colon: "fix(data): identify …", not "fix(data): Identify …"
+rest=$(printf '%s' "$subject" | sed 's/^[^:]*: //')
+case "$rest" in
+  [A-Z]*)
+    # A leading acronym or identifier is fine — CLAUDE.md, TypeScript, OSM.
+    case "$rest" in
+      [A-Z][A-Z]* | [A-Z]*[a-z]*[A-Z]*) ;;
+      *) reject "start the subject lowercase after the colon" ;;
+    esac
+    ;;
+esac
+
+exit 0

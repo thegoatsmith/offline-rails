@@ -13,7 +13,8 @@
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",
     "check": "./node_modules/@typescript/native/bin/tsc --noEmit && svelte-check --tsgo --tsconfig ./tsconfig.json",
-    "typecheck": "./node_modules/@typescript/native/bin/tsc --noEmit"
+    "typecheck": "./node_modules/@typescript/native/bin/tsc --noEmit",
+    "prepare": "git config core.hooksPath .githooks"
   },
   "devDependencies": {
     "@types/bun": "1.4.0",
