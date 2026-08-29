@@ -1,0 +1,27 @@
+{
+  "name": "offline-rails",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A metro map you own. Pulls a city's rail network from OpenStreetMap once, then never touches the network again.",
+  "type": "module",
+  "scripts": {
+    "dev": "bun run build.ts --watch",
+    "build": "bun run build.ts",
+    "test": "bun test",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix",
+    "fmt": "oxfmt",
+    "fmt:check": "oxfmt --check",
+    "check": "tsc --noEmit && svelte-check --tsconfig ./tsconfig.json"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "bun-plugin-svelte": "latest",
+    "oxfmt": "latest",
+    "oxlint": "latest",
+    "svelte": "latest",
+    "svelte-check": "latest",
+    "typescript": "latest",
+    "wrangler": "latest"
+  }
+}

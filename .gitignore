@@ -1,4 +1,10 @@
-# Editor and tooling config, not part of the app
+# dependencies
+node_modules/
+
+# build output
+dist/
+
+# editor and tooling config, not part of the app
 .claude/
 
 # macOS
