@@ -115,11 +115,25 @@ function clampBox([south, north, west, east], lat, lon) {
 function buildQuery(bbox, modes) {
   const box = `${bbox.south.toFixed(5)},${bbox.west.toFixed(5)},${bbox.north.toFixed(5)},${bbox.east.toFixed(5)}`;
   const filter = modes.join('|');
+  // Asking for the relations with `out geom` returns every member way in full,
+  // however far past the city it runs. Moscow with suburban rail came to 223 MB,
+  // of which 89% was geometry outside the box that was asked for and thrown
+  // away on arrival. Fetching ways and nodes separately and bounding both to the
+  // box is the same map for 40 MB, downloads in 7.6 s instead of 41, and builds
+  // in 0.37 s instead of 6.85. buildCity joins the ways back to their relation
+  // by ref.
+  //
+  // Note this makes small cities marginally larger — Lisbon grows about 11%,
+  // because every way now arrives as its own element with its own id instead of
+  // inline. That is a good trade: it costs a rounding error on a network that
+  // fits in the box and saves 183 MB on one that does not.
   return `[out:json][timeout:240];
 rel["type"="route"]["route"~"^(${filter})$"](${box})->.r;
-.r out body geom;
-node(r.r)->.m;
-.m out body;`;
+.r out body;
+way(r.r)(${box})->.w;
+.w out geom;
+node(r.r)(${box})->.n;
+.n out body;`;
 }
 
 export async function fetchNetwork(bbox, modes, onProgress) {
