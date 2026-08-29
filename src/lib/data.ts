@@ -27,7 +27,11 @@ import type {
 // returned 598. A mirror that fails is fine, the fallback handles it. A mirror
 // that lies is worse than no mirror, because being last it was the answer we
 // believed.
-const OVERPASS = [
+// Thrown when a mirror answers 200 with no elements, and compared by message
+// in the catch below — one constant so the two sites cannot drift apart.
+const EMPTY = 'sent nothing back';
+
+export const OVERPASS = [
   'https://overpass-api.de/api/interpreter',
   'https://overpass.kumi.systems/api/interpreter',
 ];
@@ -227,31 +231,38 @@ export async function fetchNetwork(
   onProgress?: (text: string) => void,
 ): Promise<OverpassResponse> {
   const body = 'data=' + encodeURIComponent(buildQuery(bbox, modes));
-  let lastErr: Error | undefined;
+  const failures: string[] = [];
   let sawEmpty = false;
   let sawFailure = false;
 
   for (const endpoint of OVERPASS) {
+    const host = new URL(endpoint).hostname;
     try {
-      onProgress?.(`Querying ${new URL(endpoint).hostname}…`);
+      onProgress?.(`Querying ${host}…`);
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body,
       });
-      if (res.status === 429 || res.status === 504) throw new Error('Server busy');
-      if (!res.ok) throw new Error('Overpass returned ' + res.status);
+      if (res.status === 429 || res.status === 504) throw new Error('was busy');
+      if (!res.ok) throw new Error('returned ' + res.status);
       const json = (await res.json()) as OverpassResponse;
       if (!json.elements?.length) {
         sawEmpty = true;
-        throw new Error('Empty response');
+        throw new Error(EMPTY);
       }
       return json;
     } catch (err) {
-      if ((err as Error).message === 'Empty response') sawEmpty = true;
+      if ((err as Error).message === EMPTY) sawEmpty = true;
       else sawFailure = true;
-      lastErr = err as Error;
-      onProgress?.(`${new URL(endpoint).hostname} was busy — trying another mirror…`);
+      // A request that never got a response rejects with a TypeError whose
+      // message is the browser's, not ours — "Failed to fetch" in Chrome,
+      // "Load failed" in Safari, and neither says which host it means. A
+      // refused connection and a blocked one are indistinguishable here too,
+      // so claim only what is certain: nothing came back from this host.
+      const reason = err instanceof TypeError ? 'could not be reached' : (err as Error).message;
+      failures.push(`${host} ${reason}`);
+      onProgress?.(`${host} ${reason} — trying another mirror…`);
     }
   }
 
@@ -263,7 +274,7 @@ export async function fetchNetwork(
   if (sawEmpty && !sawFailure) return { elements: [] };
 
   throw new Error(
-    'Every OpenStreetMap mirror is busy. ' + (lastErr?.message || '') + ' Try again in a minute.',
+    `Every OpenStreetMap mirror failed. ${failures.join('; ')}. Try again in a minute.`,
   );
 }
 

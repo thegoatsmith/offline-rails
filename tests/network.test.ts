@@ -10,6 +10,7 @@ import {
   decodeShape,
   fetchNetwork,
   migrateCity,
+  OVERPASS,
   placeId,
   simplify,
 } from '../src/lib/data.ts';
@@ -512,7 +513,7 @@ describe('an empty answer is only believed when every mirror agrees', () => {
       }) as unknown as typeof fetch,
       () => fetchNetwork(bbox, ['subway']),
     );
-    expect(call).rejects.toThrow(/busy/i);
+    expect(call).rejects.toThrow(/mirror failed/i);
   });
 
   test('all mirrors failing is an outage', async () => {
@@ -520,6 +521,88 @@ describe('an empty answer is only believed when every mirror agrees', () => {
       (async () => new Response('nope', { status: 500 })) as unknown as typeof fetch,
       () => fetchNetwork(bbox, ['subway']),
     );
-    expect(call).rejects.toThrow(/busy/i);
+    expect(call).rejects.toThrow(/mirror failed/i);
+  });
+});
+
+describe('an outage says which mirror failed and how', () => {
+  // "Every OpenStreetMap mirror is busy" was true of load and of nothing else.
+  // When overpass.kumi.systems started answering 502 and overpass-api.de was
+  // refusing the request outright, the message still said "busy" and named
+  // neither host, so the only way to find out which mirror was broken was to
+  // reproduce the fetches by hand outside the app.
+  const bbox = { south: 0, north: 1, west: 0, east: 1 };
+  const withFetch = async <T>(impl: typeof fetch, run: () => Promise<T>): Promise<T> => {
+    const real = globalThis.fetch;
+    globalThis.fetch = impl;
+    try {
+      return await run();
+    } finally {
+      globalThis.fetch = real;
+    }
+  };
+  // A rejection is the assertion here, so narrow to it rather than letting the
+  // union of "threw" and "resolved" leak into every expectation below.
+  const rejection = (p: Promise<unknown>): Promise<Error> =>
+    p.then(
+      () => {
+        throw new Error('expected fetchNetwork to reject');
+      },
+      (e: unknown) => e as Error,
+    );
+
+  const byHost = (statuses: Record<string, number>) =>
+    (async (url: string) =>
+      new Response('no', {
+        status: statuses[new URL(url).hostname] ?? 500,
+      })) as unknown as typeof fetch;
+
+  test('every mirror it tried is named', async () => {
+    const call = withFetch(byHost({}), () => fetchNetwork(bbox, ['subway']));
+    const err = await rejection(call);
+    for (const endpoint of OVERPASS) {
+      expect(err.message).toContain(new URL(endpoint).hostname);
+    }
+  });
+
+  test('each mirror reports its own status rather than the last one', async () => {
+    const hosts = OVERPASS.map((e) => new URL(e).hostname);
+    const call = withFetch(byHost({ [hosts[0]!]: 502, [hosts[1]!]: 429 }), () =>
+      fetchNetwork(bbox, ['subway']),
+    );
+    const err = await rejection(call);
+    expect(err.message).toMatch(new RegExp(`${hosts[0]!.replace(/\./g, '\\.')}[^;]*502`));
+    expect(err.message).toMatch(new RegExp(`${hosts[1]!.replace(/\./g, '\\.')}[^;]*busy`));
+  });
+
+  test('a mirror that could not be reached says so instead of showing a status', async () => {
+    const call = withFetch(
+      (async () => {
+        throw new TypeError('Failed to fetch');
+      }) as unknown as typeof fetch,
+      () => fetchNetwork(bbox, ['subway']),
+    );
+    const err = await rejection(call);
+    expect(err.message).toMatch(/could not be reached/);
+  });
+
+  test('a mirror that answered with nothing is distinguished from one that failed', async () => {
+    const hosts = OVERPASS.map((e) => new URL(e).hostname);
+    const call = withFetch(
+      (async (url: string) =>
+        new URL(url).hostname === hosts[0]
+          ? new Response(JSON.stringify({ elements: [] }), { status: 200 })
+          : new Response('no', { status: 500 })) as unknown as typeof fetch,
+      () => fetchNetwork(bbox, ['subway']),
+    );
+    const err = await rejection(call);
+    expect(err.message).toMatch(new RegExp(`${hosts[0]!.replace(/\./g, '\\.')}[^;]*nothing`));
+  });
+  test('the progress note names why a mirror was dropped, not just that it was', async () => {
+    const notes: string[] = [];
+    await withFetch(byHost({}), () =>
+      fetchNetwork(bbox, ['subway'], (t) => notes.push(t)).catch(() => undefined),
+    );
+    expect(notes.some((n) => /returned 500/.test(n))).toBe(true);
   });
 });
