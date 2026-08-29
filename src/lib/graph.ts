@@ -159,7 +159,7 @@ export function nearest(
 ): Nearest | Nearest[] | undefined {
   const scored = city.stations
     .map((s) => ({ s, d: dist(s, lat, lon) }))
-    .sort((a, b) => a.d - b.d)
+    .toSorted((a, b) => a.d - b.d)
     .slice(0, limit);
   return limit === 1 ? scored[0] : scored;
 }

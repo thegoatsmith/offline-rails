@@ -8,7 +8,7 @@
     "dev": "bun run build.ts --watch",
     "build": "bun run build.ts",
     "test": "bun test",
-    "lint": "oxlint",
+    "lint": "oxlint --deny-warnings",
     "lint:fix": "oxlint --fix",
     "fmt": "oxfmt",
     "fmt:check": "oxfmt --check",

@@ -21,6 +21,7 @@
     "eslint/no-await-in-loop": "off",
     "unicorn/prefer-add-event-listener": "off",
     "unicorn/consistent-function-scoping": "off",
-    "unicorn/require-module-specifiers": "off"
+    "unicorn/require-module-specifiers": "off",
+    "unicorn/require-post-message-target-origin": "off"
   }
 }
