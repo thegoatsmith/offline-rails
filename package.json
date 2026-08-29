@@ -16,14 +16,14 @@
     "typecheck": "./node_modules/@typescript/native/bin/tsc --noEmit"
   },
   "devDependencies": {
-    "@types/bun": "latest",
-    "@typescript/native": "npm:typescript@7",
-    "bun-plugin-svelte": "latest",
-    "oxfmt": "latest",
-    "oxlint": "latest",
-    "svelte": "latest",
-    "svelte-check": "latest",
-    "typescript": "~6",
-    "wrangler": "latest"
+    "@types/bun": "1.4.0",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "bun-plugin-svelte": "0.0.6",
+    "oxfmt": "0.65.0",
+    "oxlint": "1.80.0",
+    "svelte": "5.57.0",
+    "svelte-check": "4.7.6",
+    "typescript": "6.0.3",
+    "wrangler": "4.127.1"
   }
 }
