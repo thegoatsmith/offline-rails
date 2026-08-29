@@ -1,0 +1,5 @@
+# Editor and tooling config, not part of the app
+.claude/
+
+# macOS
+.DS_Store
