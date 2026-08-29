@@ -24,12 +24,14 @@ jobs:
       contents: read
       deployments: write
     steps:
+      # wrangler.toml is read from the working tree; dist/ is not rebuilt here.
+      # ci.yml already built and tested it, and downloading that exact artifact
+      # is what makes the deployed bytes the ones the gates actually ran on.
       - uses: actions/checkout@v7
-      - uses: oven-sh/setup-bun@v2
+      - uses: actions/download-artifact@v7
         with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile
-      - run: bun run build
+          name: dist
+          path: dist
       - name: deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v4
         with:
