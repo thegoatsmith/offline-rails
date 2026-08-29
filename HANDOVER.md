@@ -134,11 +134,30 @@ crossing is kept on purpose so lines still run to the edge of the map.
 affect an itinerary. Records written before this carry no `format` marker and
 are converted on first open by `migrateCity`, which needs no network.
 
-**Labels are placed greedily in a grid, not all drawn.** Zoomed out, Moscow put
-660 labels on screen: unreadable, and more than the frame budget to maintain.
-One label per cell, interchanges winning ties, cuts that to under 200 and makes
-the map legible. The grid is anchored in world space so panning does not
-reshuffle which label won.
+**Labels are placed, not just thinned.** Each one reserves the width it really
+occupies — measured once on a canvas at render — and is tried in four positions
+(right, left, above, below) against an occupancy grid, strongest station first,
+with interchange dots reserved before any type. Verified by intersecting every
+drawn box: zero overlapping pairs on Tokyo and Paris, at 11.4 ms and 8.8 ms per
+interaction.
+
+Three constants earned their values the hard way and should not be nudged
+without re-measuring:
+
+- **Attempts are rationed per patch of map (3 per 56 px), not globally.** A
+  global cap starves the outskirts: candidates are tried strongest first and the
+  strongest are all downtown, so the quota goes on losing fights in the centre.
+- **Rejection is probed sparsely** — every third column before the full box —
+  because most candidates fail and failure is the common path.
+- **Cells are 8 px, and the right size depends on the language.** Paris station
+  names average 77 px where Tokyo's average 33, because Japanese says it in 3.3
+  characters and French takes 15.8. At 4 px cells a Paris label spanned 19
+  columns and placement cost 90 ms; 8 px spans 10 and rounds outward by under
+  half a character. If labels start colliding, suspect this before the algorithm.
+
+Positions are written by `mapview`, not CSS, since every label now sits
+somewhere different — but only when the zoom changes, so panning still writes
+nothing.
 
 **Way geometry is chained before it is stored.** OSM lists a route
 relation's ways in travel order but each way keeps its own digitisation
@@ -212,6 +231,11 @@ timing loop forces a layout the wheel event just dirtied, which inflated Paris
 from 7.8 ms to 94.7 ms. Measure the handler, and check `labelsShown` first.
 
 **Not verified — start here:**
+- Benchmarks are only trustworthy for the *first* city measured after a page
+  load. Whichever city is measured second reads 5–8x slower — Tokyo-first was
+  13.8 ms with Paris-second at 82.6 ms, then Paris-first was 8.8 ms with
+  Tokyo-second at 73.9 ms. It is the teardown of the previous city's several
+  thousand SVG nodes, not the city being measured. Reload between cities.
 - Pinch-zoom is written against Pointer Events but untested on iOS Safari.
 - Storage persistence on iOS is asserted from documented behaviour, not
   observed. Much less likely to bite now that a big city is under 1 MB.
@@ -284,11 +308,13 @@ path needs real-world testing.
 
 ## Next up, in order
 
-1. **Label collision is improved, not solved.** Greedy grid placement keeps the
-   count sane, but nothing yet stops a label sitting on top of a line, and the
-   winner within a cell is whichever interchange comes first rather than the
-   most important station — there is no notion of importance beyond "is an
-   interchange".
+1. **Labels still cross lines.** Label-to-label and label-to-interchange
+   collisions are solved and measured; track geometry is not an obstacle,
+   because testing a text box against 669 polylines per placement is a different
+   order of problem. The dark halo under the type (`paint-order: stroke`) is
+   what makes it legible in the meantime, so do not remove it. If this is worth
+   solving, rasterise the lines once per reflow into the same occupancy grid
+   rather than testing geometry per candidate.
 2. **`manifest.webmanifest` and the icons.** They are listed in `SHELL` and
    referenced from `index.html` but do not exist, so every install logs them as
    misses and the app cannot be installed to a home screen — which is the whole
