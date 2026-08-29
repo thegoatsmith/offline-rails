@@ -104,20 +104,32 @@ work spans several concerns — a parser change and the query change that needed
 it — land them separately so either can be reverted alone. Verify before
 committing, not after: `bun run lint && bun run check && bun test && bun run build`.
 
-**Commit messages** follow one shape throughout the history; `git log` is the
-reference, and new ones should match:
+**Commit messages use Conventional Commits**: `type(scope): subject`.
 
-- Imperative mood, sentence case, no trailing period, ≤72 characters.
-  _"Bound the Overpass query to the box that was asked for"_, not
-  _"fix: bounded query"_.
-- **No conventional-commit prefixes.** There are none in the history; don't
-  introduce `feat:` / `fix:` / `chore:`.
+- Types: `feat`, `fix`, `perf`, `refactor`, `docs`, `test`, `build`, `ci`,
+  `chore`. Use `perf` when the justification is a measurement — much of this
+  repo's history is performance work and it should be findable as such.
+- Scopes follow the layout: `data`, `graph`, `mapview`, `ui`, `worker`, `sw`,
+  `build`, `ci`, `deps`. Omit the scope when a change genuinely spans the app.
+- Subject in the imperative, lowercase after the colon, no trailing period, and
+  the whole line under 72 characters.
+- Breaking changes take a `!` before the colon (`feat(data)!: …`) and a
+  `BREAKING CHANGE:` footer saying what a caller must now do differently.
+  Changing the stored record shape is the case that will come up here.
 - Blank line, then a body wrapped at ~76 characters.
-- The body explains **why**, with the numbers that justified it — _"223.0 MB ->
-  39.9 MB, 41.1 s -> 7.6 s"_ — and says what was verified and how. Subject says
-  what changed; the diff already shows how.
+
+The body still carries the weight, and this part is not negotiable just because
+the subject line now has a prefix:
+
+- Explain **why**, with the numbers that justified it — _"223.0 MB -> 39.9 MB,
+  41.1 s -> 7.6 s"_ — and say what was verified and how. The subject says what
+  changed; the diff shows how.
 - When a change was prompted by a bug, say what the bug actually was, not just
   that one was fixed. Future readers need the failure mode.
+
+Commits before this convention was adopted use plain sentence-case subjects.
+They stay as they are — the history is pushed, and rewriting it would cost more
+than the consistency is worth.
 
 Work goes straight to `main`; CI gates the deploy. There is no branch/PR ritual
 for this repo.
