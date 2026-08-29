@@ -142,12 +142,12 @@ body { display: flex; flex-direction: column; }
   pointer-events: none;
 }
 
-/* The label sits just off its station. Offsetting with a transform keeps x and
-   y untouched after the first render, so a zoom writes nothing per label. */
+/* Size still comes from --inv, but position does not: each label is placed
+   individually now, on whichever side of its station is free, so x and y are
+   written by mapview. They only change when the zoom does. */
 #map.css-sized .slabel {
   font-size: calc(10px * var(--inv));
   stroke-width: calc(3.5px * var(--inv));
-  transform: translate(calc(7px * var(--inv)), calc(3.4px * var(--inv)));
 }
 
 #map.css-sized .endcap { r: calc(7px * var(--inv)); }

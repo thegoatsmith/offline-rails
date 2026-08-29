@@ -121,18 +121,21 @@ export class MapView {
       lbFrag.appendChild(t);
 
       this.circles.push({ el: c, hit, interchange, x, y });
-      this.labels.push({ el: t, x, y, interchange });
+      this.labels.push({ el: t, x, y, interchange, weight: s.lines.length, w: 0, placed: false, shown: true });
     });
-    // Interchanges win when two labels want the same patch of screen — they are
-    // the ones you navigate by. Order is fixed once here so the choice stays
-    // stable from frame to frame instead of flickering as you move.
+    // Which label wins a contested patch of map: the station serving the most
+    // lines. "Is an interchange" alone put Bank and a one-line halt on equal
+    // footing; the number of lines is the closest thing the data has to how
+    // much a station matters to someone navigating by it.
     this.labelOrder = this.labels
       .map((l, i) => i)
-      .sort((a, b) => (this.labels[b].interchange ? 1 : 0) - (this.labels[a].interchange ? 1 : 0));
+      .sort((a, b) => this.labels[b].weight - this.labels[a].weight);
     this.layers.stations.appendChild(stFrag);
     this.layers.labels.appendChild(lbFrag);
+    this._measureLabels();
 
     this.bounds = { minX, minY, maxX, maxY };
+    this._placedK = 0; // a new city always reflows, whatever the last one left
     this.fit();
   }
 
@@ -179,6 +182,19 @@ export class MapView {
     this._cull(rescale);
   }
 
+  // A label occupies the width of its text, and station names are nowhere near
+  // uniform — "Oriente" against "Campolide (Avenida Conselheiro Fernando
+  // Sousa)". Reserving one fixed-size cell each was why long names still
+  // overlapped their neighbours. Measure once on a canvas, which costs no
+  // layout, and reuse the number for every zoom afterwards.
+  _measureLabels() {
+    if (!this.labels.length) return;
+    const probe = getComputedStyle(this.labels[0].el);
+    const ctx = (this._measurer ||= document.createElement('canvas').getContext('2d'));
+    ctx.font = `${probe.fontWeight} 10px ${probe.fontFamily}`;
+    for (const l of this.labels) l.w = ctx.measureText(l.el.textContent).width;
+  }
+
   // Screen-constant sizes: radii and type must not grow with the zoom.
   //
   // This is the hot path, not the render — it runs for every wheel tick and
@@ -209,31 +225,139 @@ export class MapView {
       c.hit.setAttribute('r', 14 / k);
     }
 
-    // Greedy placement in a grid of label-sized cells. Zoomed out, Moscow put
-    // 660 labels on screen — an unreadable stack that also cost more than the
-    // frame budget to maintain. One label per cell keeps the map legible and
-    // caps the work at what fits on screen rather than what the city contains.
-    // The grid is anchored in world space, not screen space, so panning does
-    // not reshuffle which label won.
-    const cellW = 112 / k, cellH = 15 / k;
+    // Greedy placement, strongest station first, over an occupancy grid fine
+    // enough to hold a real label box rather than one fixed-size cell each.
+    // Three things this gets right that a cell-per-label did not: a long name
+    // reserves the space it actually covers, a label that will not fit on the
+    // right is tried on the other three sides before being dropped, and the
+    // station dots themselves are obstacles so a name never lands on top of the
+    // thing it names. The grid is anchored in world space, so panning does not
+    // reshuffle which label won.
+    // Cell size trades packing quality against scan cost, and the exchange rate
+    // depends on the language: Paris station names average 77 px, Tokyo's 33,
+    // because Japanese says the same thing in 3.3 characters where French takes
+    // 15.8. At 4 px a Paris label spans ~19 columns and placement cost 90 ms;
+    // at 8 px it spans ~10 and rounds outward by at most half a character.
+    const cell = 8 / k;
     const taken = new Set();
-    for (const idx of this.labelOrder) {
-      const l = this.labels[idx];
-      let vis = (showLabels || l.interchange) && inView(l.x, l.y);
-      if (vis) {
-        const cell = Math.floor(l.x / cellW) + ',' + Math.floor(l.y / cellH);
-        if (taken.has(cell)) vis = false;
-        else taken.add(cell);
+    const mark = (x0, y0, x1, y1) => {
+      const cx1 = Math.floor(x1 / cell), cy1 = Math.floor(y1 / cell);
+      for (let cx = Math.floor(x0 / cell); cx <= cx1; cx++)
+        for (let cy = Math.floor(y0 / cell); cy <= cy1; cy++) taken.add(cx + ',' + cy);
+    };
+
+    // Most candidate positions are rejected, so pay for rejection cheaply:
+    // probe every third column first and only scan the whole box for the few
+    // that survive. The sparse pass is a subset of the full one, so it can
+    // reject but never wrongly accept.
+    const fits = (x0, y0, x1, y1) => {
+      const cx0 = Math.floor(x0 / cell), cx1 = Math.floor(x1 / cell);
+      const cy0 = Math.floor(y0 / cell), cy1 = Math.floor(y1 / cell);
+      for (let cx = cx0; cx <= cx1; cx += 3)
+        for (let cy = cy0; cy <= cy1; cy++) if (taken.has(cx + ',' + cy)) return false;
+      for (let cx = cx0; cx <= cx1; cx++)
+        for (let cy = cy0; cy <= cy1; cy++) if (taken.has(cx + ',' + cy)) return false;
+      return true;
+    };
+
+    // Reserve interchange dots so type never lands on the stations you navigate
+    // by. Reserving *every* dot was the obvious first try and it was wrong:
+    // Tokyo has 2,802 of them on screen, which claimed more cells than the
+    // viewport holds and left room for 26 labels out of 1,443. A plain stop is
+    // small, and a name clipping the edge of one is a far smaller sin than a
+    // map with nothing written on it.
+    for (const c of this.circles) {
+      if (!c.shown || !c.interchange) continue;
+      const rad = 5.2 / k;
+      mark(c.x - rad, c.y - rad, c.x + rad, c.y + rad);
+    }
+
+    // Placement is the expensive part, so do it only when the view has changed
+    // enough to warrant it. Re-running it on every frame of a pinch cost 32 ms
+    // on Tokyo and made the labels churn as they reflowed against a grid that
+    // shifted underneath them. Between re-flows the existing positions are kept:
+    // they drift by the same proportion the zoom changed, which at 8% is not
+    // visible.
+    const movedX = Math.abs(this.tx - (this._placedTx ?? -1e9));
+    const movedY = Math.abs(this.ty - (this._placedTy ?? -1e9));
+    const reflow =
+      !this._placedK ||
+      showLabels !== this._placedShow ||
+      Math.abs(Math.log(k / this._placedK)) > 0.08 ||
+      movedX > r.width * 0.4 ||
+      movedY > r.height * 0.4;
+
+    const gap = 6 / k, lh = 11 / k;
+
+    if (reflow) {
+      this._placedK = k;
+      this._placedTx = this.tx;
+      this._placedTy = this.ty;
+      this._placedShow = showLabels;
+
+      // Attempts are rationed by region, not globally. A global cap starved the
+      // outskirts, because candidates are tried strongest first and the
+      // strongest all sit downtown — the quota was spent losing fights in the
+      // middle before reaching suburban stops with room to spare. Trying every
+      // label instead is correct but costs 162 ms on Tokyo's 1,443.
+      //
+      // A patch of map this size holds two labels at most, so a third attempt
+      // in one is already a losing fight. That bounds the work by the size of
+      // the screen rather than the size of the city, and keeps it spread out.
+      const patch = 56 / k;
+      const tries = new Map();
+
+      for (const idx of this.labelOrder) {
+        const l = this.labels[idx];
+        l.placed = false;
+        if (!(showLabels || l.interchange) || !inView(l.x, l.y)) continue;
+
+        const patchKey = Math.floor(l.x / patch) + ',' + Math.floor(l.y / patch);
+        const used = tries.get(patchKey) || 0;
+        if (used >= 3) continue;
+        tries.set(patchKey, used + 1);
+        const w = l.w / k;
+        // right, left, above, below — the classic four, in the order they read
+        // most naturally beside a point.
+        const spots = [
+          [l.x + gap, l.y - lh / 2],
+          [l.x - gap - w, l.y - lh / 2],
+          [l.x - w / 2, l.y - gap - lh],
+          [l.x - w / 2, l.y + gap],
+        ];
+        for (const [bx, by] of spots) {
+          if (!fits(bx, by, bx + w, by + lh)) continue;
+          mark(bx, by, bx + w, by + lh);
+          l.tx = bx;
+          l.ty = by + lh * 0.78; // SVG y is the baseline, not the box top
+          l.placed = true;
+          break;
+        }
       }
+    }
+
+    for (const l of this.labels) {
+      const vis = l.placed === true && inView(l.x, l.y);
+
       if (vis !== l.shown) {
         l.shown = vis;
         l.el.setAttribute('display', vis ? 'inline' : 'none');
       }
-      if (!vis || !rescale || CSS_SIZED) continue;
-      l.el.setAttribute('font-size', 10 / k);
-      l.el.setAttribute('stroke-width', 3.5 / k);
-      l.el.setAttribute('x', l.x + 7 / k);
-      l.el.setAttribute('y', l.y + 3.4 / k);
+      if (!vis) continue;
+
+      // Position is per-label now, so it cannot come from CSS. It only changes
+      // when the zoom does or when a label finds a different spot, so panning
+      // still writes nothing.
+      if (l.tx !== l.lastX || l.ty !== l.lastY) {
+        l.lastX = l.tx;
+        l.lastY = l.ty;
+        l.el.setAttribute('x', l.tx);
+        l.el.setAttribute('y', l.ty);
+      }
+      if (rescale && !CSS_SIZED) {
+        l.el.setAttribute('font-size', 10 / k);
+        l.el.setAttribute('stroke-width', 3.5 / k);
+      }
     }
     if (!rescale || CSS_SIZED) return;
     for (const el of this.layers.route.querySelectorAll('.endcap')) {

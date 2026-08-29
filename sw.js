@@ -5,7 +5,7 @@
 // revalidation, so a client that has already installed will keep serving the
 // old modules forever until this constant changes and `activate` sweeps the
 // previous cache away.
-const CACHE = 'interchange-v6';
+const CACHE = 'interchange-v7';
 const SHELL = [
   './',
   'index.html',
