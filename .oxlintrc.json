@@ -9,11 +9,7 @@
     "browser": true,
     "es2024": true
   },
-  "ignorePatterns": [
-    "dist",
-    "node_modules",
-    "**/*.svelte"
-  ],
+  "ignorePatterns": ["dist", "node_modules", "**/*.svelte"],
   "rules": {
     "no-console": "off",
     "eslint/no-unused-vars": [

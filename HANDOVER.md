@@ -20,14 +20,16 @@ Don't add any, and don't add a dependency that does.
 
 ## Hard constraints
 
-- **No build step, no bundler, no npm dependencies.** Plain ES modules loaded
-  with `<script type="module">`. This has to stay deployable by dragging the
-  folder onto a static host. If you're reaching for a framework, don't.
+- **The output must stay a plain static folder.** There is a build step now
+  (Bun) and there are dependencies, but `dist/` is still just files: no server,
+  no runtime, no edge functions. Cloudflare Pages serves it as-is. Keep it that
+  way — the moment deployment needs anything running, the offline promise gets
+  harder to keep than it is worth.
 - **No `localStorage` or `sessionStorage`.** All persistence is IndexedDB via
-  the `store` helper in `data.js`.
+  the `store` helper in `src/lib/data.ts`.
 - **Offline is the product.** Nothing on the critical path may require a
   network call. Fonts are system stacks specifically so there's nothing to
-  fetch. If you add an asset, add it to `SHELL` in `sw.js`.
+  fetch. If you add an asset, add it to `SHELL` in `src/sw.ts`.
 - **Overpass and Nominatim are volunteer-run.** They are called only when the
   user explicitly adds a city, and are deliberately never cached by the service
   worker. Don't add background refresh, prefetching, or retry loops beyond the
@@ -39,16 +41,41 @@ Don't add any, and don't add a dependency that does.
 ## Layout
 
 ```
-index.html      app shell, all dialogs, the SVG layer stack
-styles.css      chrome is deliberately grey; all colour comes from OSM line tags
-app.js          UI wiring: cities, search, trip strip diagram, geolocation
-data.js         geocode -> Overpass -> station merging -> graph -> IndexedDB
-graph.js        Dijkstra over (station, line) states; leg collapsing
-mapview.js      SVG render, pan/pinch, screen-constant sizing, overlays
-builder.worker.js  fetch -> parse -> buildCity -> save, off the main thread
-sw.js           precaches the shell, sequentially, tolerating misses
-tests/network.test.mjs   node-only regression tests, no browser needed
+index.html              app shell, nothing but a mount point
+build.ts                the whole build: bun build + a watch server
+src/main.ts             mounts App
+src/App.svelte          composes the chrome and owns city loading
+src/ui/*.svelte         TopBar, MapStage, EmptyState, TripDock, 4 sheets
+src/styles.css          chrome is deliberately grey; colour comes from OSM tags
+src/lib/types.ts        every shape that crosses a module boundary
+src/lib/data.ts         geocode -> Overpass -> station merging -> graph -> IndexedDB
+src/lib/graph.ts        Dijkstra over (station, line) states; leg collapsing
+src/lib/mapview.ts      SVG render, pan/pinch, culling, label placement
+src/lib/state.svelte.ts the whole of the shared state, which is four fields
+src/lib/worker-client.ts talking to the builder, and when not to
+src/lib/builder.worker.ts fetch -> parse -> buildCity -> save, off the main thread
+src/sw.ts               precaches the shell, sequentially, tolerating misses
+tests/network.test.ts   bun test; no browser, no network
 ```
+
+## Toolchain
+
+Bun is package manager, bundler and test runner. TypeScript 7 (the native
+compiler) type-checks, oxlint lints, oxfmt formats, Svelte 5 with runes renders
+the chrome. `bun run dev` builds and serves on :8080 with `Cache-Control:
+no-store`, which exists because Chrome heuristically caches ES modules and an
+edit then silently does nothing with no error to explain why.
+
+**The build emits no content hashes, deliberately.** Hashed filenames force the
+service worker to be generated, and `src/sw.ts` is hand-written to cache
+sequentially — `cache.addAll()` rejects the entire install if one request fails.
+Stable names keep that file and its `SHELL` list honest. `CACHE` stays the
+update mechanism, so bump it when a shell file changes.
+
+**Svelte owns the chrome; MapView owns the map.** `mapview.ts` is imperative and
+sits behind a ref, never inside a component. It is the only hot path — Tokyo
+goes 60 ms to 11 ms an interaction on culling, change-only writes and one CSS
+custom property, and none of that survives a diff over 4,300 SVG nodes a frame.
 
 ## Decisions worth not re-litigating
 
@@ -100,6 +127,16 @@ budget, and this replaces 5,604 attribute writes with one. `--inv` is set in
 never trails the zoom by a frame. `CSS_SIZED` feature-detects it and the old
 attribute path still runs where it is unsupported — check both if you touch
 either.
+
+**$state must be snapshotted before it crosses to a worker.** Svelte wraps
+reactive values in Proxies and `postMessage` clones structurally, so handing a
+reactive object to the builder throws `DataCloneError: could not be cloned`.
+`$state.snapshot()`at the thread boundary is the fix, and it is the one real
+trap in the whole migration. Two smaller ones cost time too: the service worker
+must be built as a classic script rather than ESM (registering an ESM bundle
+fails with only "an unknown error occurred when fetching the script"), and
+registering it from`onMount`needs a`document.readyState`check, because
+onMount can run after`load` has already fired and the listener then never runs.
 
 **The query asks only for what fits in the box.** `.r out body geom` returns
 every member way of every matching relation in full, so Moscow with suburban
@@ -260,9 +297,11 @@ from 7.8 ms to 94.7 ms. Measure the handler, and check `labelsShown` first.
   server from a city with no railways — `emptyNetworkMessage` says both might be
   true rather than blaming the map. Expect this when testing repeatedly: the
   rate limit is per IP and clears in a minute or two.
-- `manifest.webmanifest` and the three files under `icons/` are listed in
-  `SHELL` but do not exist, so the install always logs those as misses and the
-  app is not installable as a PWA yet.
+- Service worker registration could not be confirmed in the test browser: even
+  a two-line worker fails there with "an unknown error occurred when fetching
+  the script", on two different servers, so it is the environment rather than
+  the code. The bundle is a valid classic script served as text/javascript.
+  Check it on a real browser before trusting offline mode.
 
 ## Two bugs already fixed — don't reintroduce
 
@@ -278,8 +317,12 @@ from 7.8 ms to 94.7 ms. Measure the handler, and check `labelsShown` first.
 ## Running it
 
 ```bash
-node tests/network.test.mjs                        # logic tests
-python3 -m http.server 8000 --protocol HTTP/1.1    # then localhost:8000
+bun install
+bun run dev      # build + serve on :8080, watching
+bun test         # 30 assertions, no browser
+bun run check    # tsc --noEmit + svelte-check
+bun run lint     # oxlint
+bun run fmt      # oxfmt
 ```
 
 Service workers need a real origin — `file://` won't work.
@@ -317,10 +360,9 @@ path needs real-world testing.
    what makes it legible in the meantime, so do not remove it. If this is worth
    solving, rasterise the lines once per reflow into the same occupancy grid
    rather than testing geometry per candidate.
-2. **`manifest.webmanifest` and the icons.** They are listed in `SHELL` and
-   referenced from `index.html` but do not exist, so every install logs them as
-   misses and the app cannot be installed to a home screen — which is the whole
-   delivery mechanism for an offline-first tool.
+2. **Re-run the performance numbers on the Svelte build.** Every figure in this
+   file was measured before the migration. The renderer is byte-for-byte the
+   same algorithm and should behave identically, but nobody has confirmed it.
 3. **Update rather than re-download.** Re-run the query for a saved city and
    diff, so a refresh does not cost a full download. Much more attractive now
    that a refresh is 40 MB rather than 223 MB.
