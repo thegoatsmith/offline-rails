@@ -32,6 +32,14 @@ jobs:
         with:
           name: dist
           path: dist
+      # wrangler-action installs wrangler whenever it cannot find one, and picks
+      # the package manager out of bun.lock -- so the deploy needs bun on the
+      # runner even though it builds nothing. Installing hands it the pinned
+      # 4.127.1 rather than letting it fetch a version of its own choosing.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - run: bun install --frozen-lockfile
       - name: deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v4
         with:
