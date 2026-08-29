@@ -14,7 +14,7 @@ declare const self: {
 // revalidation, so a client that has already installed will keep serving the
 // old modules forever until this constant changes and `activate` sweeps the
 // previous cache away.
-const CACHE = 'offline-rails-v1';
+const CACHE = 'offline-rails-v2';
 
 // Stable filenames, no content hashes — see build.ts for why that is a choice
 // rather than an oversight.
