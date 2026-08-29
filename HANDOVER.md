@@ -223,8 +223,9 @@ Verified:
   clipping to the requested box, ways arriving separately from their relation,
   place identity by OSM id, and believing an empty answer only when every
   mirror agrees. All passing.
-- Every element `app.js` queries exists in `index.html` (checked by script).
-- All modules pass `node --check`.
+- `bun run check` is clean: TypeScript 7 `--noEmit` across the 10 modules in
+  `src/`, then svelte-check over the 9 components — 0 errors, 0 warnings.
+  `oxlint --deny-warnings` is clean as well.
 - **Run against real Overpass data.** Lisbon, Prague and Mexico City through a
   Node harness; Lisbon, Bangkok and Moscow through the browser UI end to end.
   Both paths agree exactly — Lisbon builds 173 stations / 25 routes / 13 lines
@@ -272,6 +273,16 @@ timing loop forces a layout the wheel event just dirtied, which inflated Paris
 from 7.8 ms to 94.7 ms. Measure the handler, and check `labelsShown` first.
 
 **Not verified — start here:**
+
+- **Nothing checks that the seven `querySelector('#…')` calls in `mapview.ts`
+  still match the markup in `MapStage.svelte`.** This entry used to claim
+  `app.js` was checked against `index.html`; `app.js` has not existed since the
+  Svelte migration, and no script in the repo does the equivalent now. Each
+  lookup ends in `!`, which is exactly the assertion that stops tsc caring, and
+  svelte-check does not read an imperative `.ts` file against another file's
+  markup. All seven ids — `#viewport` and the six `#layer-*` groups — are
+  present as of this commit, confirmed by hand. Renaming one in the markup is a
+  null dereference at first render, with nothing failing earlier to point at it.
 
 - Benchmarks are only trustworthy for the _first_ city measured after a page
   load. Whichever city is measured second reads 5–8x slower — Tokyo-first was
