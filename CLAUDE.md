@@ -17,7 +17,17 @@ bun run fmt            # oxfmt (fmt:check in CI)
 ```
 
 CI runs lint → fmt:check → check → test → build, and only deploys from `main`
-after all five pass.
+after all five pass. The gates live in `ci.yml`, which `deploy.yml` calls
+through `workflow_call`; `deploy.yml` then ships the `dist` artifact `ci.yml`
+built, so what deploys is the tree the gates ran against rather than a second
+build of the same commit.
+
+`ci.yml` classifies each push as `full` or `docs` and exports it as an output.
+A push touching only `*.md`, `.githooks/`, `LICENSE` or `.gitignore` runs
+`fmt:check` alone — oxfmt formats markdown, so that gate can genuinely fail on
+one, and it is the only gate those paths can affect — and allocates no deploy
+runner. Adding a path to that list means checking what oxfmt claims: it formats
+`.json`, `.md`, `.ts` and `.yml`, and ignores `.svelte` and shell.
 
 **Two TypeScript installs, deliberately.** `@typescript/native` is 7.0.2 and does
 all the checking; `typescript` is 6.0.3 and exists only because svelte-check's
