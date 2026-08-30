@@ -242,51 +242,72 @@ export async function fetchNetwork(
   onProgress?: (text: string) => void,
 ): Promise<OverpassResponse> {
   const body = 'data=' + encodeURIComponent(buildQuery(bbox, modes));
-  const failures: string[] = [];
+  const controllers = OVERPASS.map(() => new AbortController());
+  // Indexed by mirror rather than appended to, so the message reads in list
+  // order however the failures happen to arrive.
+  const failures: (string | undefined)[] = [];
   let sawEmpty = false;
   let sawFailure = false;
 
-  for (const endpoint of OVERPASS) {
+  onProgress?.(`Asking ${OVERPASS.length} mirrors…`);
+
+  const attempts = OVERPASS.map(async (endpoint, i) => {
     const host = new URL(endpoint).hostname;
     try {
-      onProgress?.(`Querying ${host}…`);
       const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body,
+        signal: controllers[i]!.signal,
       });
       if (res.status === 429 || res.status === 504) throw new Error('was busy');
       if (!res.ok) throw new Error('returned ' + res.status);
       const json = (await res.json()) as OverpassResponse;
-      if (!json.elements?.length) {
-        sawEmpty = true;
-        throw new Error(EMPTY);
-      }
+      if (!json.elements?.length) throw new Error(EMPTY);
       return json;
     } catch (err) {
-      if ((err as Error).message === EMPTY) sawEmpty = true;
+      // A loser is aborted the moment another mirror wins. That is a
+      // cancellation we caused, not a mirror that failed, and recording it
+      // would put "could not be reached" against a server that was fine.
+      if ((err as Error).name === 'AbortError') throw err;
+      const message = (err as Error).message;
+      if (message === EMPTY) sawEmpty = true;
       else sawFailure = true;
       // A request that never got a response rejects with a TypeError whose
       // message is the browser's, not ours — "Failed to fetch" in Chrome,
       // "Load failed" in Safari, and neither says which host it means. A
       // refused connection and a blocked one are indistinguishable here too,
       // so claim only what is certain: nothing came back from this host.
-      const reason = err instanceof TypeError ? 'could not be reached' : (err as Error).message;
-      failures.push(`${host} ${reason}`);
-      onProgress?.(`${host} ${reason} — trying another mirror…`);
+      const reason = err instanceof TypeError ? 'could not be reached' : message;
+      failures[i] = `${host} ${reason}`;
+      onProgress?.(`${host} ${reason}`);
+      throw err;
     }
+  });
+
+  try {
+    // Promise.any, not race: race settles on the first promise to *settle*, so
+    // a mirror that 502s in 200ms would decide the whole add while a working
+    // one was still in flight. any waits for a fulfilment.
+    const winner = await Promise.any(attempts);
+    // The winner's body has already been read, so aborting its controller with
+    // the rest is a no-op — cheaper than tracking which one won.
+    for (const c of controllers) c.abort();
+    return winner;
+  } catch {
+    // An empty answer is only the truth when every mirror answered and they all
+    // agreed. If any of them failed outright, the honest report is that the
+    // servers are struggling — saying "nothing is mapped here" would blame the
+    // map for an outage, which is exactly what happened when a mirror that
+    // returns 200-with-nothing sat last in the list.
+    if (sawEmpty && !sawFailure) return { elements: [] };
+
+    throw new Error(
+      `Every OpenStreetMap mirror failed. ${failures
+        .filter((f): f is string => Boolean(f))
+        .join('; ')}. Try again in a minute.`,
+    );
   }
-
-  // An empty answer is only the truth when every mirror answered and they all
-  // agreed. If any of them failed outright, the honest report is that the
-  // servers are struggling — saying "nothing is mapped here" would blame the
-  // map for an outage, which is exactly what happened when a mirror that
-  // returns 200-with-nothing sat last in the list.
-  if (sawEmpty && !sawFailure) return { elements: [] };
-
-  throw new Error(
-    `Every OpenStreetMap mirror failed. ${failures.join('; ')}. Try again in a minute.`,
-  );
 }
 
 /* ---------------- building the network ---------------- */

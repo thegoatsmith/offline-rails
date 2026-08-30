@@ -472,7 +472,7 @@ describe('an empty answer is only believed when every mirror agrees', () => {
   const ok = (elements: unknown[]) =>
     new Response(JSON.stringify({ elements }), { status: 200 }) as Response;
 
-  test('a failing mirror falls through to a working one', async () => {
+  test('a failing mirror does not sink a working answer', async () => {
     const seen: string[] = [];
     const res = await withFetch(
       (async (url: string) => {
@@ -482,7 +482,7 @@ describe('an empty answer is only believed when every mirror agrees', () => {
       () => fetchNetwork(bbox, ['subway']),
     );
     expect(res.elements.length).toBe(1);
-    expect(seen.length).toBe(2);
+    expect(seen.length).toBe(OVERPASS.length);
   });
 
   test('a third mirror is tried when the first two fail', async () => {
@@ -503,18 +503,6 @@ describe('an empty answer is only believed when every mirror agrees', () => {
   // mirror to reach for again the next time the list looks short.
   test('the mirror that lied is not in the list', () => {
     expect(OVERPASS.map((e) => new URL(e).hostname)).not.toContain('overpass.osm.ch');
-  });
-
-  test('a working first mirror is not followed by a second request', async () => {
-    let calls = 0;
-    await withFetch(
-      (async () => {
-        calls++;
-        return ok([{ id: 1 }]);
-      }) as unknown as typeof fetch,
-      () => fetchNetwork(bbox, ['subway']),
-    );
-    expect(calls).toBe(1);
   });
 
   test('every mirror empty is reported as empty, not as an outage', async () => {
@@ -624,5 +612,88 @@ describe('an outage says which mirror failed and how', () => {
       fetchNetwork(bbox, ['subway'], (t) => notes.push(t)).catch(() => undefined),
     );
     expect(notes.some((n) => /returned 500/.test(n))).toBe(true);
+  });
+});
+
+describe('every mirror is asked at once and the losers are cancelled', () => {
+  const bbox = { south: 0, north: 1, west: 0, east: 1 };
+  const withFetch = async <T>(impl: typeof fetch, run: () => Promise<T>): Promise<T> => {
+    const real = globalThis.fetch;
+    globalThis.fetch = impl;
+    try {
+      return await run();
+    } finally {
+      globalThis.fetch = real;
+    }
+  };
+  const ok = (elements: unknown[]) =>
+    new Response(JSON.stringify({ elements }), { status: 200 }) as Response;
+
+  test('every mirror is queried, not just the first that works', async () => {
+    let calls = 0;
+    await withFetch(
+      (async () => {
+        calls++;
+        return ok([{ id: 1 }]);
+      }) as unknown as typeof fetch,
+      () => fetchNetwork(bbox, ['subway']),
+    );
+    expect(calls).toBe(OVERPASS.length);
+  });
+
+  test('the losing requests are aborted once a mirror answers', async () => {
+    const winner = new URL(OVERPASS[0]!).hostname;
+    let aborts = 0;
+    await withFetch(
+      ((url: string, init: RequestInit) =>
+        new URL(url).hostname === winner
+          ? Promise.resolve(ok([{ id: 1 }]))
+          : new Promise<Response>((_, reject) => {
+              init.signal?.addEventListener('abort', () => {
+                aborts++;
+                reject(new DOMException('Aborted', 'AbortError'));
+              });
+            })) as unknown as typeof fetch,
+      () => fetchNetwork(bbox, ['subway']),
+    );
+    expect(aborts).toBe(OVERPASS.length - 1);
+  });
+
+  // Promise.race would settle on the 502 because it arrives first, and the
+  // whole add would fail while a mirror that works was still in flight.
+  // Promise.any waits for a fulfilment, so a fast failure cannot outrank a
+  // slow success.
+  test('a mirror that fails fast does not decide the result', async () => {
+    const slow = new URL(OVERPASS[0]!).hostname;
+    const res = await withFetch(
+      (async (url: string) => {
+        if (new URL(url).hostname !== slow) return new Response('no', { status: 502 });
+        await new Promise((r) => setTimeout(r, 10));
+        return ok([{ id: 1 }]);
+      }) as unknown as typeof fetch,
+      () => fetchNetwork(bbox, ['subway']),
+    );
+    expect(res.elements.length).toBe(1);
+  });
+
+  // Failures now arrive in completion order, but a message whose order changes
+  // run to run is a message you cannot trust or test. It follows the list.
+  test('the failure list follows mirror order, not the order they failed', async () => {
+    const hosts = OVERPASS.map((e) => new URL(e).hostname);
+    const err = await withFetch(
+      (async (url: string) => {
+        // The last mirror fails instantly; the first takes its time.
+        if (new URL(url).hostname === hosts[0]) await new Promise((r) => setTimeout(r, 15));
+        return new Response('no', { status: 500 });
+      }) as unknown as typeof fetch,
+      () => fetchNetwork(bbox, ['subway']),
+    ).then(
+      () => {
+        throw new Error('expected fetchNetwork to reject');
+      },
+      (e: unknown) => e as Error,
+    );
+    const order = hosts.map((h) => err.message.indexOf(h));
+    expect(order).toEqual(order.toSorted((a, b) => a - b));
   });
 });

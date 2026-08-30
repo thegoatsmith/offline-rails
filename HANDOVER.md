@@ -30,6 +30,18 @@ Don't add any, and don't add a dependency that does.
 - **Offline is the product.** Nothing on the critical path may require a
   network call. Fonts are system stacks specifically so there's nothing to
   fetch. If you add an asset, add it to `SHELL` in `src/sw.ts`.
+- **The mirror walk was made parallel on 2026-08-29, reversing a documented
+  decision.** It had been sequential specifically so that one city add cost one
+  volunteer server one query; it now costs three servers a query each, two of
+  which are aborted. Aborting closes the socket but does not undo work Overpass
+  has already begun, so treat the load as three full queries, not one and two
+  cancellations. What bought the reversal: with `kumi.systems` answering 502 and
+  `overpass-api.de` intermittently hanging, the sequential walk spent 15s+ per
+  dead mirror before trying the next, and there is no client-side deadline on
+  the fetch. If the load ever needs winning back, hedging is the middle path —
+  start the second mirror only if the first has not answered within a few
+  seconds — and it keeps the latency win in every case except a first mirror
+  that is already down.
 - **Overpass and Nominatim are volunteer-run.** They are called only when the
   user explicitly adds a city, and are deliberately never cached by the service
   worker. Don't add background refresh, prefetching, or retry loops beyond the

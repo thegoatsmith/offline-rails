@@ -8,7 +8,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 bun install
 bun run dev            # build + serve on :8080, watching src/
 bun run build          # -> dist/
-bun test               # 47 tests, no browser, no network
+bun test               # 50 tests, no browser, no network
 bun test -t "a real corner survives"   # single test by name
 bun test tests/network.test.ts         # single file
 bun run check          # TypeScript 7 on .ts, then svelte-check on .svelte
@@ -92,11 +92,20 @@ sites (`AddCitySheet.download` and the worker) and they must stay in step.
   worker to be generated, and `src/sw.ts` is hand-written to cache _sequentially_
   because `cache.addAll()` rejects the whole install if one request fails. Bump
   `CACHE` in `sw.ts` when a shell file changes, and add new assets to `SHELL`.
+- **The Overpass mirrors are queried all at once.** `fetchNetwork` fires every
+  mirror in parallel, takes the first _fulfilment_ via `Promise.any`, and aborts
+  the losers. This reverses the earlier sequential walk deliberately: it costs
+  three volunteer servers a query per city add instead of one, and buys a first
+  answer that no longer waits on a dead mirror. `Promise.race` is the wrong
+  primitive and must not be substituted — it settles on the first promise to
+  _settle_, so a mirror answering 502 in 200 ms would decide the whole add while
+  a working one was still in flight. A test pins this.
 - **Some oxlint rules are off for cause, not convenience.** `no-await-in-loop`
-  (the Overpass mirror walk is sequential on purpose — parallelising hits three
-  volunteer servers at once) and `require-post-message-target-origin`
-  (`Worker.postMessage` takes `(message, transfer?)`; obeying the rule throws
-  `TypeError`). Verify before re-enabling either.
+  (the service worker caches the shell sequentially in `sw.ts` — `cache.addAll()`
+  rejects the whole install if one request fails) and
+  `require-post-message-target-origin` (`Worker.postMessage` takes
+  `(message, transfer?)`; obeying the rule throws `TypeError`). Verify before
+  re-enabling either.
 - **Benchmarks are only trustworthy for the first city measured after a page
   load.** Whichever city is measured second reads 5–8× slower — it is the
   teardown of the previous city's thousands of SVG nodes, not the city being
